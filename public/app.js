@@ -32,7 +32,11 @@ const els = {
   copyLink: $('#copy-link'), restart: $('#restart'),
   makePoster: $('#make-poster'), posterOverlay: $('#poster-overlay'), posterClose: $('#poster-close'),
   posterCanvasWrap: $('#poster-canvas-wrap'), posterDownload: $('#poster-download'),
-  opp: $('#opp'), oppNote: $('#opp-note'), oppList: $('#opp-list'),
+  opp: $('#opp'), oppNote: $('#opp-note'), oppList: $('#opp-list'), oppBoundary: $('#opp-boundary'),
+  history: $('#history'), historyList: $('#history-list'), historyClear: $('#history-clear'),
+  bgRun: $('#bg-run'), bgRunText: $('#bg-run-text'), bgRunView: $('#bg-run-view'),
+  rGradeCap: $('#r-grade-cap'), rGradeLegend: $('#r-grade-legend'), rBarsCap: $('#r-bars-cap'),
+  rIncSub: $('#r-inc-sub'), rCtrSub: $('#r-ctr-sub'),
 };
 
 // 证据等级 → 通俗表达（大众可读；L 编号仅留此处总图例做工程对照）
@@ -45,12 +49,18 @@ const RADAR_DIMS = [
   ['experience', '经验密度', true], ['resonance', '共鸣度', true],
 ];
 const PLOT_LABEL = { covered: 'cov', unique: 'uniq', blank: 'blank' };
+// 模式相关文案：radar（只输问题，无草稿）下 unique 语义是「该问题还缺的好回答方向」，不是「你的草稿独有」
+let reportIsRadar = false;
+const UNIQUE_TERM = () => (reportIsRadar ? '缺好回答' : '你的独有');
 
 let currentRunId = null;
 let eventSource = null;
 let lastSeq = 0;
-let lastMode = 'review'; // 失败重试用：记录最近一次发起的模式
+let lastMode = 'review'; // 失败重试用：记录最近一次发起的模式（?run= 回放时经 status 接口纠正）
 let isReplayView = false; // ?run= 回访（刷新/返回恢复）时：done 后停留在研究台，不自动跳报告
+let deskDone = false; // 研究台当前 run 是否已结束（done/failed）——B1：运行中点返回不报「报告不存在」
+let deskFromReport = false; // 研究台是否从战报卡「← 返回」退回（回放态）——此态再点返回应回首页，避免战报⇄研究台死循环
+let loggedIn = false; // 知乎登录态（历史区块标识：本机保存 vs 已云同步）
 
 // ---------- 通知（一行红/灰字，不弹窗） ----------
 let noticeTimer = null;
@@ -79,25 +89,45 @@ for (const card of [els.cardRadar, els.cardReview]) {
 }
 
 // ---------- 草稿暂存：sessionStorage 防抖 500ms（关标签即清，隐私承诺） ----------
-const DRAFT_KEYS = { question: 'sc.radar.question', rq: 'sc.review.question', draft: 'sc.review.draft' };
+// 雷达输入框支持「标题可见 + URL 隐藏」：热榜/机会榜/我的创作点击后填标题（用户可读），
+// 问题 URL 存 dataset.qurl（供后端精确定位标杆序）；用户手动输入即失效
+const DRAFT_KEYS = { question: 'sc.radar.question', rq: 'sc.review.question', draft: 'sc.review.draft', qurl: 'sc.radar.qurl' };
 let saveTimer = null;
 function persistDrafts() {
   clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
     try {
       sessionStorage.setItem(DRAFT_KEYS.question, els.radarQuestion.value);
+      sessionStorage.setItem(DRAFT_KEYS.qurl, els.radarQuestion.dataset.qurl || '');
       sessionStorage.setItem(DRAFT_KEYS.rq, els.reviewQuestion.value);
       sessionStorage.setItem(DRAFT_KEYS.draft, els.reviewDraft.value);
     } catch { /* 存储不可用时静默 */ }
   }, 500);
 }
-for (const input of [els.radarQuestion, els.reviewQuestion, els.reviewDraft]) input.addEventListener('input', persistDrafts);
+for (const input of [els.radarQuestion, els.reviewQuestion, els.reviewDraft]) {
+  input.addEventListener('input', () => {
+    if (input === els.radarQuestion) delete els.radarQuestion.dataset.qurl; // 手动输入：URL 记录失效
+    persistDrafts();
+  });
+}
 function restoreDrafts() {
   try {
     els.radarQuestion.value = sessionStorage.getItem(DRAFT_KEYS.question) || '';
+    const savedUrl = sessionStorage.getItem(DRAFT_KEYS.qurl);
+    if (savedUrl) els.radarQuestion.dataset.qurl = savedUrl;
     els.reviewQuestion.value = sessionStorage.getItem(DRAFT_KEYS.rq) || '';
     els.reviewDraft.value = sessionStorage.getItem(DRAFT_KEYS.draft) || '';
   } catch { /* 忽略 */ }
+}
+
+/** 填入雷达输入框：显示标题，URL 进 dataset（B3：点击热榜/机会榜/我的创作不再裸露链接） */
+function setRadarInput({ title, url }) {
+  els.radarQuestion.value = title;
+  if (url) els.radarQuestion.dataset.qurl = url; else delete els.radarQuestion.dataset.qurl;
+  persistDrafts();
+  location.hash = '#radar';
+  applyRoute();
+  els.radarQuestion.focus();
 }
 
 // ---------- 视图切换（URL 同步：刷新后保持当前视图，不回首页） ----------
@@ -138,8 +168,98 @@ function goBack() {
     applyRoute();
   }
 }
-els.deskBack.addEventListener('click', goBack);
-els.reportBack.addEventListener('click', goBack);
+els.deskBack.addEventListener('click', () => {
+  // B1 修复：分析进行中点返回 → 不再加载未生成的报告（404「报告不存在」吓人），
+  // 而是回首页并留下后台任务入口——任务在服务端跑完落库（设计原则：额度已烧，结果必留）
+  if (currentRunId && !deskDone) {
+    leaveRunInBackground();
+    return;
+  }
+  // 死循环修复：研究台若是「从战报卡退回来的回放态」，再点返回直接回首页
+  // （原逻辑 goBack 会因 currentRunId 存在又拉回战报 → 战报⇄研究台永远出不去）
+  if (deskFromReport) {
+    deskFromReport = false;
+    showView('entry');
+    applyRoute();
+    return;
+  }
+  goBack();
+});
+// 报告页返回（修复：原逻辑会 loadReport 当前报告 → 原地无响应）：
+// 本会话发起的分析 → 回研究台回放过程；分享链接 ?report= 进入（无会话 run）→ 回首页
+els.reportBack.addEventListener('click', () => {
+  if (currentRunId) {
+    deskFromReport = true; // 标记回放态：研究台再点返回时回首页
+    isReplayView = true;
+    eventSource?.close();
+    resetDesk('');
+    showView('desk');
+    connectEvents(currentRunId);
+  } else {
+    showView('entry');
+    applyRoute();
+  }
+});
+
+// ---------- 后台任务胶囊（B1）：离开运行中的研究台后，首页给出回到入口 + 完成提醒 ----------
+let bgRunId = null;
+let bgRunState = 'running'; // running | done
+let bgPollTimer = null;
+function leaveRunInBackground() {
+  bgRunId = currentRunId;
+  bgRunState = 'running';
+  eventSource?.close();
+  showBgPill('分析仍在后台进行，完成后这里可以查看', '回到研究台');
+  showView('entry');
+  applyRoute();
+  startBgPoll();
+}
+function showBgPill(text, action) {
+  els.bgRunText.textContent = text;
+  els.bgRunView.textContent = action;
+  els.bgRun.hidden = false;
+}
+function hideBgPill() {
+  bgRunId = null;
+  if (bgPollTimer) { clearInterval(bgPollTimer); bgPollTimer = null; }
+  els.bgRun.hidden = true;
+}
+function startBgPoll() {
+  if (bgPollTimer) clearInterval(bgPollTimer);
+  bgPollTimer = setInterval(async () => {
+    if (!bgRunId) return hideBgPill();
+    try {
+      const response = await fetch(`/api/run/${bgRunId}/status`);
+      const payload = await response.json();
+      if (!payload.ok) return;
+      if (payload.status === 'done') {
+        bgRunState = 'done';
+        showBgPill('分析完成', '查看战报 →');
+        clearInterval(bgPollTimer); bgPollTimer = null;
+      } else if (payload.status === 'failed') {
+        hideBgPill();
+        notify('后台分析未能完成，可回首页重新发起', 'error');
+      }
+    } catch { /* 网络抖动：继续轮询 */ }
+  }, 4000);
+}
+els.bgRunView.addEventListener('click', () => {
+  if (!bgRunId) return;
+  const runId = bgRunId;
+  const state = bgRunState;
+  hideBgPill();
+  if (state === 'done') {
+    currentRunId = runId;
+    loadReport(runId);
+  } else {
+    currentRunId = runId;
+    isReplayView = true; // 回放模式：完成停在研究台
+    deskFromReport = false; // 主流程回到研究台（非战报退回态）
+    resetDesk('');
+    showView('desk');
+    connectEvents(runId);
+  }
+});
 
 // ---------- 研究台 ----------
 function stepNode(step) {
@@ -200,6 +320,7 @@ function setStep(key, patch) {
 }
 
 function resetDesk(question) {
+  deskDone = false;
   els.feed.replaceChildren();
   els.evidenceStream.replaceChildren();
   els.deskQ.textContent = question || '';
@@ -283,8 +404,8 @@ function updateBudget(used, total) {
   els.budgetUsed.textContent = String(used);
   const cells = els.budgetSeg.children;
   for (let i = 0; i < cells.length; i++) cells[i].className = i < used ? 'on' : '';
-  // 证据充分度与预算推进弱相关：检索推进 → 充分度爬升
-  setGauge(Math.min(90, 15 + (used / total) * 75), used >= total ? '即将收尾' : used >= 3 ? '接近充分' : '采集中');
+  // C4 修复（诚实口径）：进度 = 检索预算用量本身，不再伪装成「证据充分度」
+  setGauge(Math.min(100, Math.round((used / total) * 100)), used >= total ? '收尾中' : used >= 3 ? '检索过半' : '检索中');
 }
 
 function addEvidenceChips(chips) {
@@ -308,7 +429,6 @@ function addEvidenceChips(chips) {
 function handleEvent(event) {
   const { type, data = {}, seq } = event;
   lastSeq = Math.max(lastSeq, seq || 0);
-  els.deskTrace.textContent = currentRunId ? `run ${currentRunId.slice(0, 8)}… · 事件 seq ${lastSeq}` : '';
   switch (type) {
     case 'queued':
       setDeskState('queued', '排队中');
@@ -351,6 +471,7 @@ function handleEvent(event) {
       setDeskState('running', '生成报告');
       break;
     case 'done':
+      deskDone = true;
       setStep('report', { state: 'done' });
       for (const step of els.feed.querySelectorAll('.step.run')) step.className = 'step done';
       setGauge(100, '完成');
@@ -389,6 +510,7 @@ function handleEvent(event) {
       cynicStep({ key: 'cynic-boot', state: 'fail', title: '杠精缺席', detail: `—— ${data.message || '本次未能完成对抗审阅'}（主审报告不受影响）` });
       break;
     case 'failed':
+      deskDone = true;
       for (const step of els.feed.querySelectorAll('.step.run')) step.className = 'step fail';
       setDeskState('failed', '失败');
       els.retryBtn.hidden = false;
@@ -400,6 +522,11 @@ function handleEvent(event) {
 function connectEvents(runId) {
   eventSource?.close();
   lastSeq = 0;
+  // B2 修复：回放 ?run= 链接（分享出去的失败任务）时，从 status 接口纠正重试模式，
+  // 避免「radar 失败 → 重试却按 review 发起 → 提示先粘贴草稿」的错位
+  fetch(`/api/run/${runId}/status`).then((r) => r.json()).then((p) => {
+    if (p.ok && p.mode) lastMode = p.mode;
+  }).catch(() => { /* 状态查询失败不阻断回放 */ });
   const source = new EventSource(`/api/run/${runId}/events`);
   eventSource = source;
   let reconnects = 0;
@@ -421,18 +548,21 @@ function connectEvents(runId) {
 async function startAnalysis(mode) {
   const question = (mode === 'radar' ? els.radarQuestion : els.reviewQuestion).value.trim();
   const draft = els.reviewDraft.value.trim();
-  if (mode === 'radar' && !question) return notify('先输入一个问题，或从热榜选一个');
+  if (mode === 'radar' && !question) return notify('先输入一个问题，或从热榜 / 机会榜选一个');
   if (mode === 'review' && !draft) return notify('先粘贴草稿，再开始试麦');
   lastMode = mode;
   isReplayView = false; // 主动发起：完成后自动进报告
+  hideBgPill(); // 新分析开始：旧后台任务入口收起
 
   const button = mode === 'radar' ? els.radarStart : els.reviewStart;
   button.disabled = true;
   try {
+    // B3：点击热榜/机会榜/我的创作时输入框显示标题，问题 URL 走 question_url 精确定位标杆序
+    const questionUrl = mode === 'radar' ? (els.radarQuestion.dataset.qurl || '') : '';
     const response = await fetch('/api/analyze', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ mode, question, draft }),
+      body: JSON.stringify({ mode, question, draft, question_url: questionUrl }),
     });
     const payload = await response.json();
     if (!response.ok || !payload.ok) throw new Error(payload.error?.message || '发起失败');
@@ -472,7 +602,7 @@ function renderReportCharts(r, argMap) {
     if (isEst) {
       const est = document.createElement('i');
       est.className = 'est';
-      est.textContent = ' 启发式';
+      est.textContent = ' 估算';
       name.append(est);
     }
     const num = document.createElement('b');
@@ -528,7 +658,7 @@ function renderArgDetail(slot, evLabel) {
   box.replaceChildren();
   const head = document.createElement('div');
   head.className = 'arg-detail-head';
-  const statusName = { covered: '已被覆盖', unique: '你的独有', blank: '相邻空白' }[slot.status] || slot.status;
+  const statusName = { covered: '已被覆盖', unique: UNIQUE_TERM(), blank: '相邻空白' }[slot.status] || slot.status;
   const tag = document.createElement('span');
   tag.className = `tag ${PLOT_LABEL[slot.status] || 'cov'}`;
   tag.textContent = statusName;
@@ -554,13 +684,25 @@ function renderArgDetail(slot, evLabel) {
 
 function renderReport(runId, report) {
   const r = report;
+  reportIsRadar = (r.trace?.mode || '') === 'radar';
   els.rGrade.textContent = r.rating || '–';
+  // A2/D6：评级语义随模式切换 + 四档含义一行小字（原先全站无解释）
+  els.rGradeCap.textContent = reportIsRadar ? '机会评级' : '增量评级';
+  els.rGradeLegend.textContent = reportIsRadar
+    ? 'S 很缺好回答 · A 值得写 · B 竞争偏多 · C 已被写透'
+    : 'S 显著独有增量 · A 有明确增量 · B 少量增量 · C 基本被覆盖';
+  els.rBarsCap.textContent = reportIsRadar ? '问题四维体检（基于社区讨论估算）' : '草稿四维体检';
+  els.rIncSub.textContent = reportIsRadar ? '这个问题还缺什么，机会在哪' : '你的增量在哪，怎么放大';
+  els.rCtrSub.textContent = reportIsRadar ? '未来答主最可能被杠的点' : '评论区最可能的杠法，与应对';
   els.rTitle.textContent = r.question_title || '（未命名）';
 
   const benchmarks = r.coverage?.benchmarks || [];
   const recent = r.coverage?.recent || [];
   const argMap = r.coverage?.argument_map || [];
   renderReportCharts(r, argMap);
+  // 地图图例随模式切换（radar 下蓝色地块是「缺好回答的方向」，不是草稿独有）
+  const legendL2 = document.querySelector('.map-legend .l2');
+  if (legendL2?.lastChild) legendL2.lastChild.textContent = UNIQUE_TERM();
   const evidenceCount = {};
   for (const item of [...benchmarks, ...recent, ...argMap]) {
     const label = EVIDENCE_LABEL[item.evidence_level] || item.evidence_level || '推导';
@@ -568,7 +710,7 @@ function renderReport(runId, report) {
   }
   const evidenceText = Object.entries(evidenceCount).map(([k, v]) => `${k}×${v}`).join(' ');
   els.rScale.innerHTML = '';
-  els.rScale.append('对比 ');
+  els.rScale.append(reportIsRadar ? '已梳理 ' : '对比 ');
   const b1 = document.createElement('b'); b1.textContent = `${benchmarks.length} 条标杆回答`;
   els.rScale.append(b1, '（社区序）+ ');
   const b2 = document.createElement('b'); b2.textContent = `${recent.length} 条近期讨论`;
@@ -582,8 +724,13 @@ function renderReport(runId, report) {
   els.rVerdict.innerHTML = '';
   els.rVerdict.append('结论：');
   const strong = document.createElement('b');
-  strong.textContent = `${uniqN} 个独有增量`;
-  els.rVerdict.append(strong, ` · ${covN} 个已被覆盖 · ${blankN} 个相邻空白`);
+  if (reportIsRadar) {
+    strong.textContent = `还缺 ${uniqN} 个好回答方向`;
+    els.rVerdict.append(strong, ` · ${covN} 个已被充分覆盖 · ${blankN} 个相邻空白`);
+  } else {
+    strong.textContent = `${uniqN} 个独有增量`;
+    els.rVerdict.append(strong, ` · ${covN} 个已被覆盖 · ${blankN} 个相邻空白`);
+  }
 
   const renderLinkList = (ul, items, renderMeta) => {
     ul.replaceChildren();
@@ -621,7 +768,7 @@ function renderReport(runId, report) {
   els.rIncrement.replaceChildren();
   const incRows = [
     ...(inc.covered || []).map((t) => ['cov', '已覆盖', t]),
-    ...(inc.unique || []).map((t) => ['uniq', '独有', t]),
+    ...(inc.unique || []).map((t) => ['uniq', reportIsRadar ? '缺好回答' : '独有', t]),
     ...(inc.blanks || []).map((t) => ['blank', '空白', t]),
     ...(inc.amplify ? [['act', '建议', inc.amplify]] : []),
   ];
@@ -750,8 +897,8 @@ function renderReport(runId, report) {
 
   const trace = r.trace || {};
   const time = trace.generated_at ? new Date(trace.generated_at).toLocaleString('zh-CN', { hour12: false }) : '';
-  // trace 行：一行短摘要；完整证据边界说明放独立可展开区块（长文不再被裁切）
-  els.rTrace.textContent = `run ${String(runId).slice(0, 8)}… · ${trace.tool_calls ?? '–'}/6 次检索 · ${time}`;
+  // D2：trace 行只留用户可理解的信息（run id 属开发者语言，URL 里已有）
+  els.rTrace.textContent = `${trace.tool_calls ?? '–'}/6 次检索 · ${time}`;
   const note = String(r.meta?.note || '').trim();
   if (note) {
     els.rBoundary.hidden = false;
@@ -807,6 +954,14 @@ async function loadReport(runId) {
     const payload = await response.json();
     if (!response.ok || !payload.ok) throw new Error(payload.error?.message || '报告加载失败');
     renderReport(runId, payload.result);
+    // 分析历史：报告渲染即入索引（本地发起、回访、分享链接进入都会记录）
+    saveHistoryEntry({
+      runId,
+      title: payload.result?.question_title || payload.question || '',
+      rating: payload.result?.rating || '',
+      mode: payload.result?.trace?.mode || payload.mode || '',
+      ts: Date.now(),
+    });
     history.replaceState(null, '', `/?report=${runId}`);
   } catch (error) {
     notify(error.message);
@@ -833,13 +988,7 @@ function renderHot() {
     go.className = 'go';
     go.textContent = '选题雷达 →';
     row.append(n, t, go);
-    row.addEventListener('click', () => {
-      els.radarQuestion.value = item.url || item.title;
-      persistDrafts();
-      location.hash = '#radar';
-      applyRoute();
-      els.radarQuestion.focus();
-    });
+    row.addEventListener('click', () => setRadarInput({ title: item.title, url: item.url }));
     els.hotList.append(row);
   });
   els.hot.hidden = items.length === 0;
@@ -911,16 +1060,12 @@ function renderOpportunities(payload) {
     go.className = 'go';
     go.textContent = '去试麦 →';
     row.append(rank, main, go);
-    row.addEventListener('click', () => {
-      els.radarQuestion.value = item.url || item.title;
-      persistDrafts();
-      location.hash = '#radar';
-      applyRoute();
-      els.radarQuestion.focus();
-    });
+    row.addEventListener('click', () => setRadarInput({ title: item.title, url: item.url }));
     els.oppList.append(row);
   }
   els.oppNote.textContent = payload.cached ? '每日预计算' : '刚出炉';
+  // C2：评分边界诚实声明（搜索偏近期，早年高赞标杆可能未被收录）
+  els.oppBoundary.textContent = payload.note || '';
   els.opp.hidden = false;
 }
 
@@ -958,6 +1103,8 @@ function renderAccountUser(profile) {
   logout.addEventListener('click', async () => {
     try { await fetch('/api/oauth/logout', { method: 'POST' }); } catch { /* 忽略 */ }
     showLoginEntry();
+    loggedIn = false;
+    renderHistory(); // 历史区块标识同步退出态
     notify('已退出知乎登录', 'info');
   });
   els.accountUser.append(who, logout);
@@ -978,6 +1125,8 @@ async function loadAccount() {
     if (payload?.error?.message) oauthError = payload.error.message;
   } catch { /* 未登录保持默认 */ }
   if (!connected) showLoginEntry();
+  loggedIn = connected; // 历史区块登录态标识（未登录「本机保存」，已登录「已云同步」）
+  renderHistory();
   const params = new URLSearchParams(location.search);
   if (params.get('oauth') === 'success') {
     notify(connected ? '知乎账号已连接，「我的创作」已解锁' : '知乎登录会话未建立，可直接使用分析功能', 'info');
@@ -1033,13 +1182,7 @@ function renderMine(items) {
       radar.type = 'button';
       radar.className = 'mine-radar';
       radar.textContent = '选题雷达 →';
-      radar.addEventListener('click', () => {
-        els.radarQuestion.value = questionUrl;
-        persistDrafts();
-        location.hash = '#radar';
-        applyRoute();
-        els.radarQuestion.focus();
-      });
+      radar.addEventListener('click', () => setRadarInput({ title: item.title || questionUrl, url: `https://www.${questionUrl}` }));
       line.append(radar);
     }
     row.append(line);
@@ -1060,10 +1203,84 @@ function renderMine(items) {
   els.mine.hidden = false;
 }
 
+// ---------- 本站分析历史（localStorage 索引 + 服务端 reports 表本体；无需登录） ----------
+// 设计：本地只存 {runId, 标题, 评级, 模式, 时间} 索引（≤8 条），报告完整数据在服务端
+// （LRU 1000 覆盖全评审期）——?report= 链接刷新/换 tab 都能复原战报卡
+const HISTORY_KEY = 'sc.history';
+const HISTORY_MAX = 8;
+
+function loadHistory() {
+  try { return JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]'); } catch { return []; }
+}
+function saveHistoryEntry(entry) {
+  try {
+    const list = loadHistory().filter((item) => item.runId !== entry.runId);
+    list.unshift(entry);
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(list.slice(0, HISTORY_MAX)));
+  } catch { /* 存储不可用时静默 */ }
+  renderHistory();
+}
+function renderHistory() {
+  const list = loadHistory();
+  // 登录态引导（用户定位：历史是登录价值之一）：未登录提示云同步价值，已登录显示已云同步
+  const headSpan = els.history.querySelector('.history-head > span');
+  if (headSpan) {
+    const count = list.length ? ` <em>最近 ${Math.min(list.length, HISTORY_MAX)} 次</em>` : '';
+    headSpan.innerHTML = '';
+    headSpan.append(loggedIn ? '我的分析历史 ' : '分析历史 ');
+    if (loggedIn) {
+      const em = document.createElement('em');
+      em.textContent = '已云同步';
+      em.style.color = 'var(--brand)';
+      headSpan.append(em);
+    } else if (list.length) {
+      const em = document.createElement('em');
+      em.textContent = '本机保存 · 登录后跨设备恢复';
+      headSpan.append(em);
+    } else {
+      headSpan.append(count.trimStart());
+    }
+  }
+  els.historyList.replaceChildren();
+  for (const item of list) {
+    const row = document.createElement('button');
+    row.type = 'button';
+    row.className = 'history-item';
+    const grade = document.createElement('span');
+    grade.className = `history-grade ${item.rating || ''}`;
+    grade.textContent = item.rating || '–';
+    const main = document.createElement('div');
+    main.className = 'history-main';
+    const title = document.createElement('span');
+    title.className = 'history-title';
+    title.textContent = item.title || '（未命名）';
+    const meta = document.createElement('span');
+    meta.className = 'history-meta';
+    const time = item.ts ? new Date(item.ts).toLocaleString('zh-CN', { hour12: false, month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
+    meta.textContent = `${item.mode === 'radar' ? '选题雷达' : '开麦评审'} · ${time}`;
+    main.append(title, meta);
+    const go = document.createElement('span');
+    go.className = 'go';
+    go.textContent = '战报 →';
+    row.append(grade, main, go);
+    row.addEventListener('click', () => {
+      currentRunId = item.runId;
+      loadReport(item.runId);
+    });
+    els.historyList.append(row);
+  }
+  els.history.hidden = list.length === 0;
+}
+els.historyClear.addEventListener('click', () => {
+  try { localStorage.removeItem(HISTORY_KEY); } catch { /* 忽略 */ }
+  renderHistory();
+});
+
 // ---------- 入口：?report= 回访 / ?run= 续看 ----------
 function boot() {
   applyRoute();
   restoreDrafts();
+  renderHistory();
   loadAccount();
   loadHot();
   loadOpportunities();

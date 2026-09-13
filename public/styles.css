@@ -80,6 +80,14 @@ a:hover { color: var(--brand); }
 .field input::placeholder, .field textarea::placeholder { color: var(--text-3); }
 .privacy { display: flex; gap: 6px; align-items: flex-start; font-size: 12px; line-height: 18px; color: var(--text-3); margin: 4px 0 14px; }
 .privacy svg { flex: none; margin-top: 3px; }
+
+/* ---------- 后台任务胶囊（B1）：离开运行中的研究台后首页回到入口 ---------- */
+.bg-run-pill { display: flex; align-items: center; gap: 10px; margin: 0 0 20px; padding: 10px 14px; border: 1px solid var(--brand-line); background: var(--brand-soft); border-radius: var(--radius-sm); font-size: 13px; color: var(--text-2); }
+.bg-run-pill .pulse-dot { color: var(--brand); background: currentColor; width: 7px; height: 7px; border-radius: 50%; flex: none; }
+@media (prefers-reduced-motion: no-preference) {
+  .bg-run-pill .pulse-dot { animation: sc-pulse 1.5s ease-in-out infinite; }
+}
+.bg-run-pill button { margin-left: auto; flex: none; }
 .actions { display: flex; align-items: center; gap: 10px; }
 .hint { font-size: 12px; color: var(--text-3); }
 
@@ -92,7 +100,26 @@ a:hover { color: var(--brand); }
 .btn.ghost:hover { border-color: var(--brand-line); color: var(--brand); }
 .btn.small { height: 32px; padding: 0 14px; font-size: 12.5px; }
 
-/* ---------- 我的创作（登录解锁） ---------- */
+/* ---------- 本站分析历史（无需登录） ---------- */
+.history { border-top: 1px solid var(--divider); margin-top: 24px; padding-top: 16px; }
+.history-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 6px; }
+.history-head > span:first-child { font-size: 12px; color: var(--text-3); }
+.history-head em { font-style: normal; color: var(--text-3); font-size: 11px; margin-left: 6px; }
+.history-clear { font-size: 12px; color: var(--text-3); background: none; border: none; padding: 4px; }
+.history-clear:hover { color: var(--red); }
+.history-list { display: flex; flex-direction: column; }
+.history-item { display: flex; align-items: center; gap: 12px; width: 100%; padding: 8px 0; border: none; border-bottom: 1px dashed var(--divider); background: none; text-align: left; color: var(--text); }
+.history-item:last-child { border-bottom: none; }
+.history-item:hover .history-title { color: var(--brand); }
+.history-grade { width: 26px; height: 26px; flex: none; border-radius: 7px; border: 1.5px solid var(--border); display: grid; place-items: center; font-family: var(--font-grade); font-size: 14px; font-weight: 700; color: var(--text-2); background: var(--bg); }
+.history-grade.S, .history-grade.A { color: var(--brand); border-color: var(--brand-line); background: var(--brand-soft); }
+.history-grade.B { color: var(--amber); border-color: var(--amber-line); background: var(--amber-soft); }
+.history-grade.C { color: var(--text-3); }
+.history-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.history-title { font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.history-meta { font-size: 11px; color: var(--text-3); }
+.history-item .go { font-size: 12px; color: var(--text-3); flex: none; }
+
 .mine { border-top: 1px solid var(--divider); margin-top: 24px; padding-top: 16px; }
 .mine-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 6px; }
 .mine-head > span:first-child { font-size: 12px; color: var(--text-3); }
@@ -146,6 +173,9 @@ a:hover { color: var(--brand); }
 .opp-gap-label { font-family: var(--font-mono); font-size: 11px; color: var(--text-3); flex: none; }
 .opp-reason { font-size: 11px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .opp-item .go { font-size: 12px; color: var(--text-3); flex: none; }
+/* C2：评分边界诚实声明 */
+.opp-boundary { margin: 8px 0 0; font-size: 11px; line-height: 16px; color: var(--text-3); }
+.opp-boundary:empty { display: none; }
 
 /* ---------- 分享海报弹窗（P2） ---------- */
 .poster-overlay { position: fixed; inset: 0; z-index: 50; background: rgba(24, 24, 27, .45); display: grid; place-items: center; padding: 24px; }
@@ -253,6 +283,11 @@ a:hover { color: var(--brand); }
 .report-title p b { color: var(--text); font-weight: 600; }
 .verdict { margin-top: 8px; font-size: 12.5px; color: var(--text-2); background: var(--bg); border: 1px solid var(--divider); border-radius: var(--radius-sm); padding: 6px 10px; display: inline-block; }
 .verdict b { color: var(--brand); font-weight: 600; }
+/* S/A/B/C 四档含义（D6：全站原先无一处解释） */
+.grade-legend { margin: 6px 0 0; font-size: 11px; color: var(--text-3); line-height: 16px; }
+/* 四维体检主语（A4：标明评的是草稿还是问题） */
+.bars-cap { margin: 16px 0 0; font-size: 11px; color: var(--text-3); }
+.bars-cap + .radar-bars { margin-top: 6px; }
 .radar-bars { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-top: 18px; }
 .radar-bar .lab { display: flex; justify-content: space-between; align-items: baseline; font-size: 12px; color: var(--text-2); margin-bottom: 4px; }
 .radar-bar .lab b { font-family: var(--font-mono); font-weight: 600; color: var(--text); }
@@ -264,14 +299,15 @@ a:hover { color: var(--brand); }
 .report-sec h3 { font-size: 14.5px; font-weight: 600; margin: 0 0 3px; display: flex; align-items: center; gap: 8px; }
 .report-sec h3 .no { width: 18px; height: 18px; border-radius: 5px; background: var(--text); color: #fff; font-size: 11px; display: grid; place-items: center; font-family: var(--font-mono); font-weight: 600; }
 .report-sec .sub { font-size: 12px; color: var(--text-3); margin: 0 0 14px 26px; }
-.arg-map { display: flex; min-height: 34px; border-radius: 8px; overflow: hidden; border: 1px solid var(--border); }
-.arg-plot { flex: 1; display: flex; flex-direction: column; justify-content: center; padding: 6px 10px; border-right: 1px solid var(--surface); position: relative; min-width: 0; }
+.arg-map { display: flex; min-height: 46px; border-radius: 8px; overflow: hidden; border: 1px solid var(--border); }
+.arg-plot { flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 2px; padding: 5px 10px; border-right: 1px solid var(--surface); position: relative; min-width: 0; }
 .arg-plot:last-child { border-right: none; }
 .arg-plot.cov { background: var(--divider); }
 .arg-plot.uniq { background: var(--brand-soft); border-left: 2px solid var(--brand); border-right: 2px solid var(--brand); }
 .arg-plot.blank { background: repeating-linear-gradient(45deg, #F4F5F7 0 6px, #FAFBFC 6px 12px); border-top: 1.5px dashed var(--text-3); border-bottom: 1.5px dashed var(--text-3); }
 .arg-plot .p-t { font-size: 11.5px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.arg-plot .p-e { position: absolute; top: 2px; right: 4px; font-size: 9px; font-family: var(--font-mono); color: var(--text-3); background: rgba(255, 255, 255, .75); padding: 0 3px; border-radius: 3px; }
+/* 证据角标：独立一行右对齐（原 absolute 定位与论点文字重叠——实测截图反馈） */
+.arg-plot .p-e { align-self: flex-end; font-size: 9px; font-family: var(--font-mono); color: var(--text-3); background: rgba(255, 255, 255, .75); padding: 0 3px; border-radius: 3px; white-space: nowrap; }
 .arg-plot { cursor: pointer; }
 .arg-plot:hover, .arg-plot:focus-visible { outline: 1.5px solid var(--brand); outline-offset: -1.5px; }
 .arg-plot.active { outline: 1.5px solid var(--text); outline-offset: -1.5px; }

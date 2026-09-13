@@ -38,7 +38,7 @@ test('score: 高赞 + L4 权威覆盖充分 → 低空缺度', () => {
   assert.equal(stats.l4Count, 2);
   assert.equal(stats.questionIndexed, true);
   assert.match(reason, /相关内容 3 条/);
-  assert.match(reason, /问题已被索引收录/);
+  assert.match(reason, /问题已出现在搜索结果/);
 });
 
 test('score: 相关内容稀缺 → 高空缺度（缺好回答）', () => {

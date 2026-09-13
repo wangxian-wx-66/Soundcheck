@@ -38,6 +38,13 @@
           <p>发布前的一次信息增量体检：已有回答覆盖了什么，你的增量在哪，评论区会怎么杠。</p>
         </section>
 
+        <!-- 后台任务入口（B1）：分析进行中离开研究台，任务不中断（服务端跑完落库），这里给回到入口 -->
+        <div class="bg-run-pill" id="bg-run" hidden>
+          <span class="pulse-dot"></span>
+          <span id="bg-run-text">分析仍在后台进行…</span>
+          <button class="btn ghost small" id="bg-run-view" type="button">回到研究台</button>
+        </div>
+
         <section class="modes">
           <div class="mode-card" id="card-radar" data-mode="radar" role="button" tabindex="0">
             <span class="mode-tag">写作前</span>
@@ -67,16 +74,25 @@
             </label>
             <p class="privacy">
               <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><rect x="2" y="5" width="8" height="5.5" rx="1" stroke="#8E8E96" stroke-width="1.2"/><path d="M4 5V3.8a2 2 0 0 1 4 0V5" stroke="#8E8E96" stroke-width="1.2"/></svg>
-              草稿仅存本次浏览器会话，服务器不留存
+              草稿仅存本次浏览器会话，分析时匿名发送 AI 检索比对，服务器不存储草稿
             </p>
             <div class="actions">
               <button class="btn primary" id="review-start">开始试麦</button>
-              <span class="hint">约 1-2 分钟 · 6 次检索</span>
+              <span class="hint">约 1-2 分钟</span>
             </div>
           </div>
         </section>
 
         <!-- 我的创作（登录解锁）：计登录数不拦人——数据来自知乎授权公开接口，本站不落库 -->
+        <!-- 本站分析历史（localStorage 存 run_id 索引，报告本体在服务端 reports 表；无需登录） -->
+        <section class="history" id="history" hidden>
+          <div class="history-head">
+            <span>分析历史 <em>最近 8 次</em></span>
+            <button class="history-clear" id="history-clear" type="button">清空</button>
+          </div>
+          <div class="history-list" id="history-list"></div>
+        </section>
+
         <section class="mine" id="mine" hidden>
           <div class="mine-head">
             <span>我的创作 <em>已解锁</em></span>
@@ -100,6 +116,7 @@
             <span class="opp-note" id="opp-note"></span>
           </div>
           <div class="opp-list" id="opp-list"></div>
+          <p class="opp-boundary" id="opp-boundary"></p>
         </section>
       </div>
 
@@ -112,7 +129,7 @@
             <span class="desk-q" id="desk-q"></span>
           </div>
           <div class="desk-meta">
-            <span class="pill" id="budget-pill">工具 <b id="budget-used">0</b>/6</span>
+            <span class="pill" id="budget-pill">检索 <b id="budget-used">0</b>/6</span>
             <span class="state-pill running" id="desk-state"><span class="pulse-dot"></span><span id="desk-state-text">分析中</span></span>
           </div>
         </div>
@@ -120,12 +137,12 @@
           <div class="feed" id="feed"></div>
           <aside class="desk-side">
             <div>
-              <h3>证据充分度</h3>
+              <h3>检索进度</h3>
               <div class="gauge-row"><b id="gauge-label">准备中</b><span id="gauge-pct">0%</span></div>
               <div class="bar"><i id="gauge-bar" style="width:0%"></i></div>
             </div>
             <div>
-              <h3>工具预算</h3>
+              <h3>检索预算</h3>
               <div class="seg" id="budget-seg"><i></i><i></i><i></i><i></i><i></i><i></i></div>
             </div>
             <div>
@@ -160,13 +177,15 @@
         <div class="report-card">
           <div class="report-head">
             <div class="report-top">
-              <div class="rating-stamp"><span class="grade" id="r-grade">–</span><span class="cap">增量评级</span></div>
+              <div class="rating-stamp"><span class="grade" id="r-grade">–</span><span class="cap" id="r-grade-cap">增量评级</span></div>
               <div class="report-title">
                 <h2 id="r-title">–</h2>
                 <p id="r-scale">–</p>
                 <div class="verdict" id="r-verdict" hidden></div>
+                <p class="grade-legend" id="r-grade-legend"></p>
               </div>
             </div>
+            <p class="bars-cap" id="r-bars-cap">草稿四维体检</p>
             <div class="radar-bars" id="r-bars"></div>
           </div>
 
@@ -194,13 +213,13 @@
 
           <div class="report-sec">
             <h3><span class="no">2</span>增量定位</h3>
-            <p class="sub">你的增量在哪，怎么放大</p>
+            <p class="sub" id="r-inc-sub">你的增量在哪，怎么放大</p>
             <div class="inc-list" id="r-increment"></div>
           </div>
 
           <div class="report-sec">
             <h3><span class="no">3</span>争议预演</h3>
-            <p class="sub">评论区最可能的杠法，与应对</p>
+            <p class="sub" id="r-ctr-sub">评论区最可能的杠法，与应对</p>
             <div id="r-controversy"></div>
           </div>
 

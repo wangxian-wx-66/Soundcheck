@@ -81,6 +81,8 @@ function drawMic(ctx, x, y, size, color) {
  * @returns {HTMLCanvasElement}
  */
 export function renderPoster(report, { runId = '', reportUrl = '' } = {}) {
+  const isRadar = (report?.trace?.mode || '') === 'radar';
+  const uniqTerm = isRadar ? '缺好回答' : '你的独有';
   const canvas = document.createElement('canvas');
   canvas.width = W * SCALE;
   canvas.height = H * SCALE;
@@ -142,7 +144,8 @@ export function renderPoster(report, { runId = '', reportUrl = '' } = {}) {
   ctx.textBaseline = 'alphabetic';
   ctx.fillStyle = C.text3;
   ctx.font = `400 13px ${FONT}`;
-  ctx.fillText('增量评级', pad, y + stampSize + 26);
+  // A2：评级语义随模式切换（radar 评的是问题机会，不是草稿增量）
+  ctx.fillText(isRadar ? '机会评级' : '增量评级', pad, y + stampSize + 26);
 
   const titleX = pad + stampSize + 32;
   const titleW = W - pad - titleX;
@@ -158,14 +161,15 @@ export function renderPoster(report, { runId = '', reportUrl = '' } = {}) {
   const blankN = (inc.blanks || []).length;
   ctx.font = `400 15px ${FONT}`;
   ctx.fillStyle = C.text2;
-  ctx.fillText(`${uniqN} 个独有增量 · ${covN} 个已被覆盖 · ${blankN} 个相邻空白`, titleX, y + 34 + 38 * 3 + 10);
+  ctx.fillText(isRadar ? `还缺 ${uniqN} 个好回答方向 · ${covN} 个已被充分覆盖 · ${blankN} 个相邻空白` : `${uniqN} 个独有增量 · ${covN} 个已被覆盖 · ${blankN} 个相邻空白`, titleX, y + 34 + 38 * 3 + 10);
 
   y += stampSize + 64;
 
   // ---- 四维条 ----
   ctx.fillStyle = C.text3;
   ctx.font = `400 13px ${FONT}`;
-  ctx.fillText('四维体检', pad, y - 12);
+  // A4：标明体检对象（radar 评的是问题，review 评的是草稿），用户不再猜分数量纲
+  ctx.fillText(isRadar ? '问题四维体检（基于社区讨论估算）' : '草稿四维体检', pad, y - 12);
   y += 14;
   const dims = [
     ['新颖度', report?.radar?.novelty], ['严谨度', report?.radar?.rigor],
@@ -197,7 +201,7 @@ export function renderPoster(report, { runId = '', reportUrl = '' } = {}) {
   // ---- 增量地图（12 地块条） ----
   ctx.fillStyle = C.text3;
   ctx.font = `400 13px ${FONT}`;
-  ctx.fillText('论点版图（灰 已覆盖 · 蓝 你的独有 · 虚线 空白）', pad, y - 12);
+  ctx.fillText(`论点版图（灰 已覆盖 · 蓝 ${uniqTerm} · 虚线 空白）`, pad, y - 12);
   y += 14;
   const argMap = report?.coverage?.argument_map || [];
   const cols = 4;
@@ -234,6 +238,13 @@ export function renderPoster(report, { runId = '', reportUrl = '' } = {}) {
         ctx.font = `400 11.5px ${FONT}`;
         const lines = wrapText(ctx, slot.argument || '', cellW - 14, 2);
         lines.forEach((line, i) => ctx.fillText(line, x + 7, y + 20 + i * 15));
+        // C3：证据角标落地（原海报声明「每条结论标注证据等级」但实际没画——说了要做）
+        if (slot.evidence_level) {
+          ctx.font = `400 9px ${FONT}`;
+          const tag = String(slot.evidence_level).slice(0, 6);
+          ctx.fillStyle = slot.status === 'unique' ? 'rgba(255,255,255,.75)' : C.text3;
+          ctx.fillText(tag, x + cellW - ctx.measureText(tag).width - 5, y + cellH - 5);
+        }
         ctx.restore();
       } else {
         ctx.fillStyle = C.bg;
@@ -250,7 +261,7 @@ export function renderPoster(report, { runId = '', reportUrl = '' } = {}) {
   if (uniqN > 0) {
     ctx.fillStyle = C.text3;
     ctx.font = `400 13px ${FONT}`;
-    ctx.fillText('你的独有增量', pad, y - 12);
+    ctx.fillText(isRadar ? '这个问题还缺的好回答方向' : '你的独有增量', pad, y - 12);
     y += 14;
     ctx.font = `400 14.5px ${FONT}`;
     for (const text of (inc.unique || []).slice(0, 3)) {
@@ -274,9 +285,11 @@ export function renderPoster(report, { runId = '', reportUrl = '' } = {}) {
     ctx.fillStyle = C.redSoft;
     roundRect(ctx, pad, y, inner, 64, 10);
     ctx.fill();
+    // C3：争议预演标注证据等级（真实评论佐证 / 推导），与站内战报卡同口径
     ctx.fillStyle = C.red;
     ctx.font = `600 13px ${FONT}`;
-    for (const line of wrapText(ctx, `「${objection.objection || ''}」`, inner - 32, 1)) ctx.fillText(line, pad + 16, y + 22);
+    const evidenceTag = objection.evidence === 'real' ? '【真实评论佐证】' : '【推导】';
+    for (const line of wrapText(ctx, `${evidenceTag}「${objection.objection || ''}」`, inner - 32, 1)) ctx.fillText(line, pad + 16, y + 22);
     ctx.fillStyle = C.text2;
     ctx.font = `400 13px ${FONT}`;
     for (const line of wrapText(ctx, `应对：${objection.response || ''}`, inner - 32, 2)) { ctx.fillText(line, pad + 16, y + 42); y += 0; }
@@ -292,7 +305,8 @@ export function renderPoster(report, { runId = '', reportUrl = '' } = {}) {
   ctx.stroke();
   ctx.fillStyle = C.text3;
   ctx.font = `400 12px ${FONT}`;
-  const trace = '判断依据：社区排序 / 站内检索 / 真实评论 · 每条结论标注证据等级';
+  // C3：声明口径与实际一致（论点地块与争议预演已标注证据等级）
+  const trace = '判断依据：社区排序 / 站内检索 / 真实评论 · 论点与争议均标注证据等级';
   ctx.fillText(trace, pad, footY);
   const time = report?.trace?.generated_at ? new Date(report.trace.generated_at).toLocaleDateString('zh-CN') : '';
   if (time) {
