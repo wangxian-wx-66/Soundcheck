@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "projectName": "试麦员 Soundcheck",
+  "projectSlug": "试麦员-soundcheck",
+  "oauth": {
+    "enabled": true,
+    "appId": "399",
+    "redirectUri": null,
+    "credentialService": "zhihu-hackathon:试麦员-soundcheck:1ac3889608",
+    "credentialAccount": "oauth-app-key"
+  },
+  "host": "127.0.0.1",
+  "port": 4173
+}

@@ -1,0 +1,25 @@
+# 依赖与构建产物
+node_modules/
+dist/
+build/
+
+# 数据库（SQLite 运行数据，可再生）
+/data/*.db
+/data/*.db-wal
+/data/*.db-shm
+*.corrupt
+
+# 凭证与密钥（红线：不进仓库）
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/
+secrets.env
+.app_key.tmp
+
+# 系统
+.DS_Store
+Thumbs.db
+npm-debug.log*

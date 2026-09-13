@@ -1,0 +1,148 @@
+import http from 'node:http';
+import { existsSync } from 'node:fs';
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { createOAuth } from './lib/oauth.mjs';
+import { openDb } from './lib/db.mjs';
+import { createGate } from './lib/gate.mjs';
+import { createZhihu, createMockZhihuFetch, ZhihuApiError } from './lib/zhihu.mjs';
+import { createLlm } from './lib/llm.mjs';
+import { createPipeline } from './lib/pipeline.mjs';
+
+const root = path.dirname(fileURLToPath(import.meta.url));
+const config = JSON.parse(await readFile(path.join(root, 'hackathon.config.json'), 'utf8'));
+const publicDir = path.join(root, 'public');
+const oauth = createOAuth(config);
+const runtimeHost = process.env.HOST || (process.env.PORT ? '0.0.0.0' : config.host);
+const runtimePort = Number(process.env.PORT || config.port);
+const types = new Map([
+  ['.html', 'text/html; charset=utf-8'], ['.css', 'text/css; charset=utf-8'], ['.js', 'text/javascript; charset=utf-8'],
+  ['.svg', 'image/svg+xml'], ['.png', 'image/png'], ['.ico', 'image/x-icon'],
+]);
+
+// 主管线装配：数据层 → 知乎适配层 → LLM → 并发闸门 → Agent 管线
+const db = openDb(process.env.DATA_DIR || path.join(root, 'data'));
+const gate = createGate({ activeLimit: 6, upstreamLimits: { zhihu: 4, llm: 4 } });
+const zhihu = createZhihu({
+  db,
+  gate,
+  secret: process.env.SMOKE === '1' ? 'smoke-mock-secret' : (process.env.ZHIHU_ACCESS_SECRET || ''),
+  fetchImpl: process.env.SMOKE === '1' ? createMockZhihuFetch() : undefined,
+});
+const llm = createLlm();
+const pipeline = createPipeline({ db, zhihu, llm, gate });
+
+function headers(type = 'application/json; charset=utf-8') {
+  return {
+    'Content-Type': type, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff',
+    'Referrer-Policy': 'no-referrer',
+    'Content-Security-Policy': "default-src 'self'; img-src 'self' https: data:; style-src 'self'; script-src 'self'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'",
+  };
+}
+function json(response, status, payload) { response.writeHead(status, headers()); response.end(JSON.stringify(payload)); }
+function redirect(response, location) { response.writeHead(302, { Location: location, 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' }); response.end(); }
+
+async function readJsonBody(request, limitBytes = 1_000_000) {
+  const chunks = [];
+  let size = 0;
+  for await (const chunk of request) {
+    size += chunk.length;
+    if (size > limitBytes) throw Object.assign(new Error('请求体过大'), { code: 'PAYLOAD_TOO_LARGE' });
+    chunks.push(chunk);
+  }
+  try { return JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}'); }
+  catch { throw Object.assign(new Error('请求体不是合法 JSON'), { code: 'BAD_JSON' }); }
+}
+
+/** SSE：事件自增序号 + Last-Event-ID 续传 + 15s 心跳（反代不掐长连接） */
+function handleRunEvents(request, response, runId) {
+  const backlog = pipeline.getEvents(runId, 0);
+  if (!backlog) return json(response, 404, { ok: false, error: { code: 'RUN_NOT_FOUND', message: '任务不存在或已过期（服务器可能重启过）' } });
+
+  response.writeHead(200, {
+    'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-store', 'Connection': 'keep-alive',
+    'X-Accel-Buffering': 'no',
+  });
+  const write = (chunk) => response.write(chunk);
+  const sendEvent = (event) => write(`id: ${event.seq}\nevent: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`);
+
+  const lastEventId = Number(request.headers['last-event-id'] || 0);
+  for (const event of backlog) if (event.seq > lastEventId) sendEvent(event);
+
+  const heartbeat = setInterval(() => write(': ping\n\n'), 15_000);
+  const unsubscribe = pipeline.subscribe(runId, sendEvent);
+  const status = pipeline.getStatus(runId);
+  if (status && (status.status === 'done' || status.status === 'failed') && !backlog.length) sendEvent({ seq: 0, ts: Date.now(), type: status.status, data: {} });
+
+  request.on('close', () => { clearInterval(heartbeat); unsubscribe?.(); });
+}
+
+const server = http.createServer(async (request, response) => {
+  const url = new URL(request.url, `http://${config.host}:${config.port}`);
+  try {
+    // ---- OAuth（官方脚手架路由，保持不动） ----
+    if (request.method === 'GET' && url.pathname === '/api/health') {
+      return json(response, 200, { ok: true, project: config.projectName, oauthEnabled: true, llm: llm.configured ? (llm.mock ? 'mock' : llm.model) : 'missing_key', zhihu: zhihu.configured ? 'ready' : 'missing_secret' });
+    }
+    if (request.method === 'GET' && url.pathname === '/api/oauth/status') return json(response, 200, { ok: true, ...(await oauth.status(request, response)) });
+    if (request.method === 'GET' && url.pathname === '/api/oauth/start') {
+      try { return redirect(response, await oauth.start(request, response)); }
+      catch (error) { oauth.record(request, response, error); return redirect(response, '/?oauth=error'); }
+    }
+    if (request.method === 'GET' && url.pathname === '/auth/callback') {
+      try { await oauth.callback(request, response, url); return redirect(response, '/?oauth=success'); }
+      catch (error) { oauth.record(request, response, error); return redirect(response, '/?oauth=error'); }
+    }
+    if (request.method === 'POST' && url.pathname === '/api/oauth/run-all') return json(response, 200, { ok: true, results: await oauth.runAll(request, response) });
+    if (request.method === 'POST' && url.pathname === '/api/oauth/logout') { oauth.logout(request, response); return json(response, 200, { ok: true }); }
+
+    // ---- 主管线（P0-A） ----
+    if (request.method === 'POST' && url.pathname === '/api/analyze') {
+      const body = await readJsonBody(request);
+      const { runId } = pipeline.start(body.mode, {
+        question: body.question || '',
+        draft: body.draft || '',
+        questionUrl: body.question_url || '',
+      });
+      return json(response, 200, { ok: true, runId });
+    }
+    const runMatch = url.pathname.match(/^\/api\/run\/([0-9a-f-]+)\/events$/);
+    if (request.method === 'GET' && runMatch) return handleRunEvents(request, response, runMatch[1]);
+    const statusMatch = url.pathname.match(/^\/api\/run\/([0-9a-f-]+)\/status$/);
+    if (request.method === 'GET' && statusMatch) {
+      const status = pipeline.getStatus(statusMatch[1]);
+      if (!status) return json(response, 404, { ok: false, error: { code: 'RUN_NOT_FOUND', message: '任务不存在' } });
+      return json(response, 200, { ok: true, ...status });
+    }
+    const reportMatch = url.pathname.match(/^\/api\/report\/([0-9a-f-]+)$/);
+    if (request.method === 'GET' && reportMatch) {
+      const report = pipeline.getReport(reportMatch[1]);
+      if (!report) return json(response, 404, { ok: false, error: { code: 'REPORT_NOT_FOUND', message: '报告不存在（分析可能仍在进行或已失败）' } });
+      return json(response, 200, { ok: true, ...report });
+    }
+    if (request.method === 'GET' && url.pathname === '/api/hot') {
+      if (!zhihu.configured) return json(response, 503, { ok: false, error: { code: 'ZHIHU_NOT_CONFIGURED', message: 'ZHIHU_ACCESS_SECRET 未配置' } });
+      const hot = await zhihu.hotList(10);
+      return json(response, 200, { ok: true, items: hot.items, cached: Boolean(hot.cached) });
+    }
+    if (request.method === 'GET' && url.pathname === '/api/stats') {
+      return json(response, 200, { ok: true, ...pipeline.stats() });
+    }
+
+    // ---- 静态页面 ----
+    if (request.method !== 'GET') return json(response, 405, { ok: false, error: { message: '不支持的请求方法' } });
+    const requested = url.pathname === '/' ? '/index.html' : url.pathname;
+    const filePath = path.join(publicDir, path.normalize(requested));
+    if (!filePath.startsWith(publicDir) || !existsSync(filePath)) return json(response, 404, { ok: false, error: { message: '页面不存在' } });
+    response.writeHead(200, headers(types.get(path.extname(filePath)) || 'application/octet-stream'));
+    response.end(await readFile(filePath));
+  } catch (error) {
+    if (error instanceof ZhihuApiError) return json(response, 502, { ok: false, error: { code: error.code, message: error.message } });
+    const clientError = error.code === 'BAD_JSON' || error.code === 'PAYLOAD_TOO_LARGE' || error.code === 'BAD_REQUEST';
+    json(response, clientError ? 400 : 500, { ok: false, error: { code: error.code || 'REQUEST_FAILED', message: error.message } });
+  }
+});
+
+server.listen(runtimePort, runtimeHost, () => process.stdout.write(`${config.projectName}: http://${runtimeHost}:${runtimePort}/\n`));
+for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => server.close(() => process.exit(0)));
