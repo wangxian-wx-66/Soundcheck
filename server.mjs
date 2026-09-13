@@ -9,6 +9,7 @@ import { createGate } from './lib/gate.mjs';
 import { createZhihu, createMockZhihuFetch, ZhihuApiError } from './lib/zhihu.mjs';
 import { createLlm } from './lib/llm.mjs';
 import { createPipeline } from './lib/pipeline.mjs';
+import { createOpportunity } from './lib/opportunity.mjs';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const config = JSON.parse(await readFile(path.join(root, 'hackathon.config.json'), 'utf8'));
@@ -65,6 +66,18 @@ if (zhihu.configured && process.env.SMOKE !== '1') {
 if (quotaLow) process.stdout.write(`[quota] 搜索额度低余量（${quotaNote}），本次运行将跳过 L2 定向补强\n`);
 
 const pipeline = createPipeline({ db, zhihu, llm, gate, quotaLow });
+const opportunity = createOpportunity({ zhihu, db });
+
+// 机会榜后台预计算（P2）：启动 5s 后跑一次 + 每 12h 刷新（每日 ≤2 次预计算，hot_list+search 额度富余）
+// 失败静默（下次 interval 重试；请求侧还有现算兜底）；SMOKE 模式跳过后台（mock 由请求驱动）
+if (zhihu.configured && process.env.SMOKE !== '1') {
+  const prewarmOpportunity = () => opportunity
+    .get()
+    .then((result) => process.stdout.write(`[opportunity] 预计算完成：${result.items.length} 个机会 · gap ${result.items.map((i) => i.gap).join('/')}\n`))
+    .catch(() => { /* 预计算失败不阻塞，请求时兜底现算 */ });
+  setTimeout(prewarmOpportunity, 5_000).unref?.();
+  setInterval(prewarmOpportunity, 12 * 3600_000).unref?.();
+}
 
 function headers(type = 'application/json; charset=utf-8') {
   return {
@@ -178,6 +191,12 @@ const server = http.createServer(async (request, response) => {
       if (!zhihu.configured) return json(response, 503, { ok: false, error: { code: 'ZHIHU_NOT_CONFIGURED', message: 'ZHIHU_ACCESS_SECRET 未配置' } });
       const hot = await zhihu.hotList(10);
       return json(response, 200, { ok: true, items: hot.items, cached: Boolean(hot.cached) });
+    }
+    // 机会榜（P2）：热榜上还缺好回答的问题——每日缓存，未命中时现算（≤8 次搜索，约 6s）
+    if (request.method === 'GET' && url.pathname === '/api/opportunities') {
+      if (!zhihu.configured) return json(response, 503, { ok: false, error: { code: 'ZHIHU_NOT_CONFIGURED', message: 'ZHIHU_ACCESS_SECRET 未配置' } });
+      const result = await opportunity.get();
+      return json(response, 200, { ok: true, ...result });
     }
     if (request.method === 'GET' && url.pathname === '/api/stats') {
       const mem = process.memoryUsage();

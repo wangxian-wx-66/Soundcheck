@@ -1,5 +1,7 @@
 // 试麦员 Soundcheck · 前端逻辑
 // 契约：docs/UI设计规范_v1.md §六交互约定 + devlog/2026-09-13_P0-A主线开发.md §三 API 契约
+import { renderPoster, downloadPoster } from './poster.js';
+
 const $ = (selector) => document.querySelector(selector);
 
 const els = {
@@ -28,6 +30,9 @@ const els = {
   rJurySec: $('#r-jury-sec'), rJuryVerdict: $('#r-jury-verdict'), rJuryDisagreements: $('#r-jury-disagreements'),
   rNitCount: $('#r-nit-count'), rNitpicks: $('#r-nitpicks'),
   copyLink: $('#copy-link'), restart: $('#restart'),
+  makePoster: $('#make-poster'), posterOverlay: $('#poster-overlay'), posterClose: $('#poster-close'),
+  posterCanvasWrap: $('#poster-canvas-wrap'), posterDownload: $('#poster-download'),
+  opp: $('#opp'), oppNote: $('#opp-note'), oppList: $('#opp-list'),
 };
 
 // 证据等级 → 通俗表达（大众可读；L 编号仅留此处总图例做工程对照）
@@ -768,6 +773,19 @@ function renderReport(runId, report) {
       notify('复制失败，请手动复制地址栏链接');
     }
   };
+  // 分享海报（P2）：canvas 手绘 3:4 PNG，纯前端生成
+  els.makePoster.onclick = () => {
+    try {
+      els.posterCanvasWrap.replaceChildren();
+      const canvas = renderPoster(r, { runId, reportUrl: `${location.host}/?report=${runId}` });
+      canvas.className = 'poster-canvas';
+      els.posterCanvasWrap.append(canvas);
+      els.posterDownload.onclick = () => downloadPoster(canvas, `soundcheck-${String(runId).slice(0, 8)}.png`);
+      els.posterOverlay.hidden = false;
+    } catch (error) {
+      notify(`海报生成失败：${error.message || error}`);
+    }
+  };
   els.restart.onclick = () => {
     showView('entry');
     applyRoute();
@@ -839,6 +857,72 @@ els.hotRefresh.addEventListener('click', () => {
   hotOffset = (hotOffset + 4) % Math.max(hotItems.length, 1);
   renderHot();
 });
+
+// ---------- 海报弹窗（P2） ----------
+function closePoster() { els.posterOverlay.hidden = true; }
+els.posterClose.addEventListener('click', closePoster);
+els.posterOverlay.addEventListener('click', (event) => {
+  if (event.target === els.posterOverlay) closePoster(); // 点遮罩关闭
+});
+window.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && !els.posterOverlay.hidden) closePoster();
+});
+
+// ---------- 机会榜（P2：热榜上还缺好回答的问题，每日预计算） ----------
+async function loadOpportunities() {
+  try {
+    const response = await fetch('/api/opportunities');
+    const payload = await response.json();
+    if (!response.ok || !payload.ok || !payload.items?.length) return;
+    renderOpportunities(payload);
+  } catch { /* 机会榜不可用不阻塞主流程 */ }
+}
+
+function renderOpportunities(payload) {
+  els.oppList.replaceChildren();
+  for (const item of payload.items) {
+    const row = document.createElement('button');
+    row.type = 'button';
+    row.className = 'opp-item';
+    const rank = document.createElement('span');
+    rank.className = 'opp-rank';
+    rank.textContent = `#${item.rank}`;
+    const main = document.createElement('div');
+    main.className = 'opp-main';
+    const titleLine = document.createElement('div');
+    titleLine.className = 'opp-title';
+    titleLine.textContent = item.title;
+    const gapRow = document.createElement('div');
+    gapRow.className = 'opp-gap-row';
+    const gapBar = document.createElement('div');
+    gapBar.className = 'opp-gap-bar';
+    const fill = document.createElement('i');
+    fill.style.width = `${Math.max(4, Math.min(100, item.gap))}%`;
+    gapBar.append(fill);
+    const gapLabel = document.createElement('span');
+    gapLabel.className = 'opp-gap-label';
+    gapLabel.textContent = `空缺度 ${item.gap}`;
+    gapRow.append(gapBar, gapLabel);
+    const reason = document.createElement('div');
+    reason.className = 'opp-reason';
+    reason.textContent = item.reason;
+    main.append(titleLine, gapRow, reason);
+    const go = document.createElement('span');
+    go.className = 'go';
+    go.textContent = '去试麦 →';
+    row.append(rank, main, go);
+    row.addEventListener('click', () => {
+      els.radarQuestion.value = item.url || item.title;
+      persistDrafts();
+      location.hash = '#radar';
+      applyRoute();
+      els.radarQuestion.focus();
+    });
+    els.oppList.append(row);
+  }
+  els.oppNote.textContent = payload.cached ? '每日预计算' : '刚出炉';
+  els.opp.hidden = false;
+}
 
 // ---------- OAuth 登录态（P0-B：登录解锁个人历史——计登录数，不拦任何主功能） ----------
 // 创作类型 → 中文标签（知乎用户数据接口 ContentType 口径）
@@ -982,6 +1066,7 @@ function boot() {
   restoreDrafts();
   loadAccount();
   loadHot();
+  loadOpportunities();
   const params = new URLSearchParams(location.search);
   const reportId = params.get('report');
   const runId = params.get('run');

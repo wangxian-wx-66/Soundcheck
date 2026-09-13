@@ -92,6 +92,15 @@
           </div>
           <div class="hot-list" id="hot-list"></div>
         </section>
+
+        <!-- 机会榜（P2）：热榜上还缺好回答的问题，每日预计算 -->
+        <section class="opp" id="opp" hidden>
+          <div class="opp-head">
+            <span>今日机会榜 <em>热榜上还缺好回答的问题</em></span>
+            <span class="opp-note" id="opp-note"></span>
+          </div>
+          <div class="opp-list" id="opp-list"></div>
+        </section>
       </div>
 
       <!-- 研究台 -->
@@ -219,12 +228,28 @@
             </div>
             <div class="report-actions">
               <button class="btn ghost small" id="copy-link" type="button">复制链接</button>
+              <button class="btn primary small" id="make-poster" type="button">生成分享海报</button>
               <button class="btn ghost small" id="restart" type="button">再试一次</button>
             </div>
           </div>
         </div>
       </section>
     </main>
+
+    <!-- 分享海报预览（P2：纯前端 canvas 生成，不上传服务器） -->
+    <div class="poster-overlay" id="poster-overlay" hidden>
+      <div class="poster-modal" role="dialog" aria-label="分享海报预览">
+        <div class="poster-modal-head">
+          <b>分享海报</b>
+          <button class="poster-close" id="poster-close" type="button" aria-label="关闭">×</button>
+        </div>
+        <div class="poster-canvas-wrap" id="poster-canvas-wrap"></div>
+        <div class="poster-modal-foot">
+          <span class="hint">3:4 竖版 PNG · 前端生成，不上传服务器</span>
+          <button class="btn primary small" id="poster-download" type="button">下载 PNG</button>
+        </div>
+      </div>
+    </div>
 
     <footer class="site-foot">
       <span>试麦员 Soundcheck · 知乎黑客松 2026 · 判断依据：社区排序 / 站内检索 / 真实评论（每条结论标注来源）</span>

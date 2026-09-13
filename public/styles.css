@@ -127,6 +127,38 @@ a:hover { color: var(--brand); }
 .hot-item .t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .hot-item .go { margin-left: auto; font-size: 12px; color: var(--text-3); flex: none; }
 
+/* ---------- 机会榜（P2） ---------- */
+.opp { border-top: 1px solid var(--divider); margin-top: 24px; padding-top: 16px; }
+.opp-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 6px; }
+.opp-head > span:first-child { font-size: 12px; color: var(--text-3); }
+.opp-head em { font-style: normal; color: var(--brand); }
+.opp-note { font-size: 11px; color: var(--text-3); white-space: nowrap; }
+.opp-list { display: flex; flex-direction: column; }
+.opp-item { display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px 0; border: none; border-bottom: 1px dashed var(--divider); background: none; text-align: left; color: var(--text); }
+.opp-item:last-child { border-bottom: none; }
+.opp-item:hover .opp-title { color: var(--brand); }
+.opp-rank { font-family: var(--font-mono); font-size: 12px; font-weight: 600; color: var(--brand); flex: none; }
+.opp-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.opp-title { font-size: 13.5px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.opp-gap-row { display: flex; align-items: center; gap: 8px; }
+.opp-gap-bar { flex: 1; max-width: 200px; height: 5px; border-radius: var(--radius-pill); background: var(--divider); overflow: hidden; }
+.opp-gap-bar i { display: block; height: 100%; border-radius: var(--radius-pill); background: var(--brand); }
+.opp-gap-label { font-family: var(--font-mono); font-size: 11px; color: var(--text-3); flex: none; }
+.opp-reason { font-size: 11px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.opp-item .go { font-size: 12px; color: var(--text-3); flex: none; }
+
+/* ---------- 分享海报弹窗（P2） ---------- */
+.poster-overlay { position: fixed; inset: 0; z-index: 50; background: rgba(24, 24, 27, .45); display: grid; place-items: center; padding: 24px; }
+.poster-modal { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); max-width: min(560px, 100vw - 48px); max-height: calc(100vh - 48px); display: flex; flex-direction: column; overflow: hidden; }
+.poster-modal-head { display: flex; align-items: center; justify-content: space-between; padding: 12px 18px; border-bottom: 1px solid var(--divider); }
+.poster-modal-head b { font-size: 14px; }
+.poster-close { width: 28px; height: 28px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: none; font-size: 16px; color: var(--text-2); line-height: 1; }
+.poster-close:hover { border-color: var(--brand-line); color: var(--brand); }
+.poster-canvas-wrap { overflow: auto; padding: 18px; display: grid; place-items: center; }
+.poster-canvas { max-width: 100%; height: auto; border: 1px solid var(--border); border-radius: var(--radius-sm); }
+.poster-modal-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 18px; border-top: 1px solid var(--divider); }
+.poster-modal-foot .hint { font-size: 12px; color: var(--text-3); }
+
 /* ---------- 研究台 ---------- */
 .desk { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; margin-top: 24px; }
 .desk-head { border-bottom: 1px solid var(--divider); padding: 14px 24px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }

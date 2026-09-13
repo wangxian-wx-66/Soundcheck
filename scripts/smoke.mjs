@@ -110,6 +110,14 @@ try {
   const hot = await api('/api/hot');
   record('GET /api/hot（选题雷达数据源）', hot.status === 200 && Array.isArray(hot.payload.items) && hot.payload.items.length > 0);
 
+  // 6.2 机会榜（P2）：热榜上还缺好回答的问题——mock 链路现算 + 每日缓存
+  const opp = await api('/api/opportunities');
+  const oppOk = opp.status === 200 && Array.isArray(opp.payload.items) && opp.payload.items.length > 0 &&
+    opp.payload.items[0].gap >= 0 && Boolean(opp.payload.items[0].reason);
+  record('GET /api/opportunities（机会榜：gap 评分 + 理由）', oppOk === true, `items=${opp.payload.items?.length} gap=${opp.payload.items?.[0]?.gap}`);
+  const oppAgain = await api('/api/opportunities');
+  record('GET /api/opportunities 二次命中缓存', oppAgain.status === 200 && oppAgain.payload.cached === true);
+
   // 6.5 个人历史（P0-B 登录解锁）：未登录 → 401 LOGIN_REQUIRED（不拦人：主功能全部可用）
   const mine = await api('/api/user/contents?limit=10');
   record('GET /api/user/contents（未登录 → 401，登录解锁）', mine.status === 401 && mine.payload.error?.code === 'LOGIN_REQUIRED', mine.payload.error?.code || '');
