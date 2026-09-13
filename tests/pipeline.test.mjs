@@ -281,6 +281,136 @@ test('pipeline: 失败事件（LLM 未配置且非 mock）', async () => {
   assert.equal(failed.data.code, 'LLM_NO_KEY');
 });
 
+// ---------- P0-C①：SSE 事件落盘（重启后 ?run= 回放） ----------
+test('db/pipeline: 事件落盘 + 模拟重启回放（Last-Event-ID 增量）', async () => {
+  const { db, zhihu, llm, pipeline } = buildStack();
+  const { runId } = pipeline.start('review', {
+    question: '机器学习该怎么入门？',
+    draft: '先学数学，再学课程，最后做项目。',
+  });
+  await waitFor(() => pipeline.getStatus(runId)?.status === 'done');
+
+  // 模拟重启：同一 db 上新建 pipeline（内存 runs 清零）
+  const pipeline2 = createPipeline({ db, zhihu, llm, gate: createGate() });
+  const events = pipeline2.getEvents(runId, 0);
+  assert.ok(events.length >= 7, `落盘事件应完整，实际 ${events.length}`);
+  const types = events.map((e) => e.type);
+  for (const required of ['start', 'parse', 'benchmark_done', 'done']) {
+    assert.ok(types.includes(required), `回放应含 ${required}`);
+  }
+  // seq 严格递增（落盘保序）
+  for (let i = 1; i < events.length; i++) assert.ok(events[i].seq > events[i - 1].seq);
+  // Last-Event-ID 增量续传：只回 seq 更大者
+  const midSeq = events[Math.floor(events.length / 2)].seq;
+  const tail = pipeline2.getEvents(runId, midSeq);
+  assert.ok(tail.length >= 1 && tail.every((e) => e.seq > midSeq));
+  // 重启后状态可恢复（报告在库 → done）
+  assert.equal(pipeline2.getStatus(runId).status, 'done');
+  assert.equal(pipeline2.getReport(runId).result.rating, pipeline.getReport(runId).result.rating);
+});
+
+// ---------- P0-C②：quota 降级（搜索余量 <20% 跳过 L2 补强） ----------
+test('pipeline: quotaLow 降级——拉取标杆序后搜索被拒（L2 补强跳过）', async () => {
+  const script = [
+    { tool: 'zhihu_search', args: { query: '机器学习 入门' } },
+    { tool: 'question_answers', args: { question_url: 'https://www.zhihu.com/question/20691338' } },
+    { tool: 'zhihu_search', args: { query: '数学基础 机器学习' } }, // L2 补强，应被额度保险丝拒绝
+  ];
+  const db = openDb(tempDir());
+  const gate = createGate();
+  const zhihu = createZhihu({ db, gate, secret: 's', fetchImpl: createMockZhihuFetch() });
+  const llm = createLlm({ mock: true, mockScript: script });
+  const pipeline = createPipeline({ db, zhihu, llm, gate, quotaLow: true });
+
+  const { runId } = pipeline.start('radar', { question: '机器学习该怎么入门？' });
+  await waitFor(() => pipeline.getStatus(runId)?.status === 'done');
+  const { result } = pipeline.getReport(runId);
+  assert.equal(result.trace.tool_calls, 2, '首次搜索 + 标杆序之后，L2 搜索不应消耗预算');
+  assert.equal(zhihu.callLog.zhihu_search, 1, '上游只应被真实调用 1 次（L2 被拦）');
+  assert.equal(zhihu.callLog.question_answers, 1);
+  assert.ok(String(result.meta.note).includes('L2'), 'meta.note 应声明降级');
+});
+
+// ---------- P0-D①：benchmark chip 作者名（answer ID 交叉匹配） ----------
+test('pipeline: benchmark chip 显示作者名（搜索证据交叉匹配，不伪造）', async () => {
+  const { pipeline } = buildStack(); // mock 搜索含 answer/53910077 · 作者「时光纪」
+  const { runId } = pipeline.start('radar', { question: '机器学习该怎么入门？' });
+  await waitFor(() => pipeline.getStatus(runId)?.status === 'done');
+
+  let matched = false;
+  let fallback = false;
+  for (const event of pipeline.getEvents(runId, 0)) {
+    if (event.type !== 'evidence') continue;
+    for (const chip of event.data.chips || []) {
+      if (chip.type !== 'benchmark') continue;
+      if (chip.label.includes('#1 · 时光纪')) matched = true;
+      if (/社区序 #\d+ · .{20,}…$/.test(chip.label)) fallback = true; // 未匹配 → 摘要截断回退
+    }
+  }
+  assert.equal(matched, true, 'mock 链路 answer 53910077 应显示作者「时光纪」');
+  assert.equal(fallback, true, '未交叉匹配到的标杆应回退摘要截断（不伪造作者）');
+});
+
+// ---------- P1：杠精 Agent（双角色分歧） ----------
+test('pipeline: 杠精 Agent——找茬 3 条 + 真实评论佐证 + 与主审分歧（review 模式）', async () => {
+  const { pipeline } = buildStack();
+  const { runId } = pipeline.start('review', {
+    question: '机器学习该怎么入门？',
+    draft: '我认为入门机器学习应该先学数学基础，然后做项目实践，最后选一门好课程。',
+  });
+  await waitFor(() => pipeline.getStatus(runId)?.status === 'done');
+
+  const { result } = pipeline.getReport(runId);
+  assert.ok(result.cynic, 'review 报告应包含杠精结论');
+  assert.equal(result.cynic.nitpicks.length, 3, '恰好 3 条找茬');
+  assert.ok(['S', 'A', 'B', 'C'].includes(result.cynic.own_rating), '杠精应给出独立评级');
+  assert.ok(result.cynic.disagreements.length >= 1, '应呈现与主审的分歧点');
+  assert.ok(result.cynic.nitpicks.some((n) => n.evidence === 'real'), '至少 1 条带真实评论佐证（mock CommentInfoList 命中）');
+  // 杠精引用的「真实评论」必须来自检索到的评论样本（不伪造）
+  assert.ok(result.cynic.nitpicks.filter((n) => n.evidence === 'real').every((n) => n.source.includes('数学基础真的重要')));
+
+  const types = pipeline.getEvents(runId, 0).map((e) => e.type);
+  for (const required of ['cynic_start', 'cynic_done']) assert.ok(types.includes(required), `研究台杠精发言流应含 ${required}`);
+
+  // 草稿隐私：杠精结论落库不包含草稿原文
+  const persisted = JSON.stringify(result.cynic);
+  assert.equal(persisted.includes('我认为入门机器学习'), false);
+});
+
+test('pipeline: radar 模式无杠精（无草稿可对抗审阅）', async () => {
+  const { pipeline } = buildStack();
+  const { runId } = pipeline.start('radar', { question: '机器学习该怎么入门？' });
+  await waitFor(() => pipeline.getStatus(runId)?.status === 'done');
+  const { result } = pipeline.getReport(runId);
+  assert.equal(result.cynic, undefined);
+  assert.equal(pipeline.getEvents(runId, 0).some((e) => e.type.startsWith('cynic')), false);
+});
+
+test('pipeline: 杠精失败不拖垮主报告（cynic_failed 事件 + 主报告照常落库）', async () => {
+  const db = openDb(tempDir());
+  const gate = createGate();
+  const zhihu = createZhihu({ db, gate, secret: 's', fetchImpl: createMockZhihuFetch() });
+  const base = createLlm({ mock: true });
+  // 只在杠精调用（找茬轮）抛错的 LLM：主审链路全部正常
+  const llm = {
+    get model() { return base.model; }, get mock() { return base.mock; }, get configured() { return base.configured; },
+    chat: base.chat,
+    async chatJson(options = {}) {
+      const lastUser = [...(options.messages || [])].reverse().find((m) => m.role === 'user')?.content || '';
+      if (/找茬/.test(lastUser)) throw Object.assign(new Error('杠精调用失败（模拟）'), { code: 'CYNIC_BOOM' });
+      return base.chatJson(options);
+    },
+  };
+  const pipeline = createPipeline({ db, zhihu, llm, gate });
+  const { runId } = pipeline.start('review', { question: '机器学习该怎么入门？', draft: '先学数学，再做项目。' });
+  await waitFor(() => pipeline.getStatus(runId)?.status === 'done');
+  const { result } = pipeline.getReport(runId);
+  assert.ok(result, '主报告应照常完成');
+  assert.equal(result.cynic, null, '杠精失败 → cynic 为 null，不影响主报告');
+  const cynicFailed = pipeline.getEvents(runId, 0).find((e) => e.type === 'cynic_failed');
+  assert.ok(cynicFailed, '应产生 cynic_failed 事件（研究台显示杠精缺席）');
+});
+
 function jsonResponse(payload) {
   return { ok: true, status: 200, json: async () => payload };
 }

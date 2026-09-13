@@ -13,6 +13,22 @@ import { createPipeline } from './lib/pipeline.mjs';
 const root = path.dirname(fileURLToPath(import.meta.url));
 const config = JSON.parse(await readFile(path.join(root, 'hackathon.config.json'), 'utf8'));
 const publicDir = path.join(root, 'public');
+
+// .env 本地加载（零依赖）：仅填补未设置的变量，真实环境变量优先（Sealos Secret 注入不受影响）
+// .env 已被 .gitignore 排除；文件不存在时静默跳过
+if (process.env.SMOKE !== '1') {
+  const envFile = path.join(root, '.env');
+  if (existsSync(envFile)) {
+    for (const line of (await readFile(envFile, 'utf8')).split(/\r?\n/)) {
+      const match = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)\s*$/);
+      if (!match || line.trim().startsWith('#')) continue;
+      const [, key, raw] = match;
+      const value = raw.replace(/^["']|["']$/g, '');
+      if (process.env[key] === undefined && value !== '') process.env[key] = value;
+    }
+  }
+}
+
 const oauth = createOAuth(config);
 const runtimeHost = process.env.HOST || (process.env.PORT ? '0.0.0.0' : config.host);
 const runtimePort = Number(process.env.PORT || config.port);
@@ -31,7 +47,24 @@ const zhihu = createZhihu({
   fetchImpl: process.env.SMOKE === '1' ? createMockZhihuFetch() : undefined,
 });
 const llm = createLlm();
-const pipeline = createPipeline({ db, zhihu, llm, gate });
+
+// 启动自检 quota（不消耗额度）：zhihu_search 余量 <20% → 降级标志（跳过 L2 补强，省额度保险丝）
+// 查询失败/未配置/SMOKE 模式不降级——降级必须是可核实的判断，不是猜测
+let quotaLow = false;
+let quotaNote = '';
+if (zhihu.configured && process.env.SMOKE !== '1') {
+  try {
+    const quotas = await zhihu.quota(['zhihu_search']);
+    const q = Array.isArray(quotas) && quotas.find((item) => item.APIID === 'zhihu_search');
+    if (q && Number(q.TotalQuota) > 0 && Number(q.RemainingQuota) / Number(q.TotalQuota) < 0.2) {
+      quotaLow = true;
+      quotaNote = `搜索余量 ${q.RemainingQuota}/${q.TotalQuota}`;
+    }
+  } catch { /* quota 查询失败不降级，也不阻塞启动 */ }
+}
+if (quotaLow) process.stdout.write(`[quota] 搜索额度低余量（${quotaNote}），本次运行将跳过 L2 定向补强\n`);
+
+const pipeline = createPipeline({ db, zhihu, llm, gate, quotaLow });
 
 function headers(type = 'application/json; charset=utf-8') {
   return {
@@ -55,10 +88,12 @@ async function readJsonBody(request, limitBytes = 1_000_000) {
   catch { throw Object.assign(new Error('请求体不是合法 JSON'), { code: 'BAD_JSON' }); }
 }
 
-/** SSE：事件自增序号 + Last-Event-ID 续传 + 15s 心跳（反代不掐长连接） */
+/** SSE：事件自增序号 + Last-Event-ID 续传 + 15s 心跳（反代不掐长连接）
+ *  重启后回放：事件已落 SQLite events 表——报告在则回放至 done；事件在但报告缺（任务被重启打断）则补 failed 事件，绝不静默挂死 */
 function handleRunEvents(request, response, runId) {
   const backlog = pipeline.getEvents(runId, 0);
-  if (!backlog) return json(response, 404, { ok: false, error: { code: 'RUN_NOT_FOUND', message: '任务不存在或已过期（服务器可能重启过）' } });
+  const status = pipeline.getStatus(runId);
+  if (!backlog.length && !status) return json(response, 404, { ok: false, error: { code: 'RUN_NOT_FOUND', message: '任务不存在或已过期（服务器可能重启过）' } });
 
   response.writeHead(200, {
     'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-store', 'Connection': 'keep-alive',
@@ -72,8 +107,11 @@ function handleRunEvents(request, response, runId) {
 
   const heartbeat = setInterval(() => write(': ping\n\n'), 15_000);
   const unsubscribe = pipeline.subscribe(runId, sendEvent);
-  const status = pipeline.getStatus(runId);
   if (status && (status.status === 'done' || status.status === 'failed') && !backlog.length) sendEvent({ seq: 0, ts: Date.now(), type: status.status, data: {} });
+  // 重启场景：事件回放到一半但既无 done/failed 也无活跃 run → 任务被重启打断，诚实告知（前端据此显示重试）
+  if (!pipeline.getRun(runId) && !['done', 'failed'].includes(backlog[backlog.length - 1]?.type)) {
+    sendEvent({ seq: (backlog[backlog.length - 1]?.seq || 0) + 1, ts: Date.now(), type: 'failed', data: { code: 'SERVER_RESTARTED', message: '服务器重启，任务已中断。请返回重新发起分析' } });
+  }
 
   request.on('close', () => { clearInterval(heartbeat); unsubscribe?.(); });
 }
@@ -83,7 +121,7 @@ const server = http.createServer(async (request, response) => {
   try {
     // ---- OAuth（官方脚手架路由，保持不动） ----
     if (request.method === 'GET' && url.pathname === '/api/health') {
-      return json(response, 200, { ok: true, project: config.projectName, oauthEnabled: true, llm: llm.configured ? (llm.mock ? 'mock' : llm.model) : 'missing_key', zhihu: zhihu.configured ? 'ready' : 'missing_secret' });
+      return json(response, 200, { ok: true, project: config.projectName, oauthEnabled: true, llm: llm.configured ? (llm.mock ? 'mock' : llm.model) : 'missing_key', zhihu: zhihu.configured ? 'ready' : 'missing_secret', quotaLow });
     }
     if (request.method === 'GET' && url.pathname === '/api/oauth/status') return json(response, 200, { ok: true, ...(await oauth.status(request, response)) });
     if (request.method === 'GET' && url.pathname === '/api/oauth/start') {
@@ -127,7 +165,12 @@ const server = http.createServer(async (request, response) => {
       return json(response, 200, { ok: true, items: hot.items, cached: Boolean(hot.cached) });
     }
     if (request.method === 'GET' && url.pathname === '/api/stats') {
-      return json(response, 200, { ok: true, ...pipeline.stats() });
+      const mem = process.memoryUsage();
+      return json(response, 200, {
+        ok: true, ...pipeline.stats(),
+        memory: { rss_mb: Math.round(mem.rss / 1048576), heap_used_mb: Math.round(mem.heapUsed / 1048576), heap_total_mb: Math.round(mem.heapTotal / 1048576) },
+        zhihu_calls: zhihu.callLog, // 上游真实调用计数（缓存命中不计）——压测 single-flight 验证用
+      });
     }
 
     // ---- 静态页面 ----

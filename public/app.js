@@ -14,13 +14,24 @@ const els = {
   gaugeLabel: $('#gauge-label'), gaugePct: $('#gauge-pct'), gaugeBar: $('#gauge-bar'),
   feed: $('#feed'), evidenceStream: $('#evidence-stream'),
   deskTrace: $('#desk-trace'), queueNote: $('#queue-note'), resumeNote: $('#resume-note'),
+  deskBack: $('#desk-back'), reportBack: $('#report-back'),
+  retryBtn: $('#retry-btn'),
+  cynicPanel: $('#cynic-panel'), cynicFeed: $('#cynic-feed'), cynicState: $('#cynic-state'), cynicStateText: $('#cynic-state-text'),
   entry: $('#view-entry'),
   report: $('#report'), rGrade: $('#r-grade'), rTitle: $('#r-title'), rScale: $('#r-scale'),
   rVerdict: $('#r-verdict'), rBars: $('#r-bars'), rArgmap: $('#r-argmap'),
   rBmCount: $('#r-bm-count'), rBenchmarks: $('#r-benchmarks'),
   rRecentCount: $('#r-recent-count'), rRecent: $('#r-recent'),
   rIncrement: $('#r-increment'), rControversy: $('#r-controversy'), rTrace: $('#r-trace'),
+  rBoundary: $('#r-boundary'), rBoundaryToggle: $('#r-boundary-toggle'), rBoundaryBody: $('#r-boundary-body'),
+  rJurySec: $('#r-jury-sec'), rJuryVerdict: $('#r-jury-verdict'), rJuryDisagreements: $('#r-jury-disagreements'),
+  rNitCount: $('#r-nit-count'), rNitpicks: $('#r-nitpicks'),
   copyLink: $('#copy-link'), restart: $('#restart'),
+};
+
+// 证据等级 → 通俗表达（大众可读；L 编号仅留此处总图例做工程对照）
+const EVIDENCE_LABEL = {
+  L1: '社区排序', L2: '站内检索', L3: '真实评论', L4: 'AI 转述', 推导: '推导',
 };
 
 const RADAR_DIMS = [
@@ -32,6 +43,8 @@ const PLOT_LABEL = { covered: 'cov', unique: 'uniq', blank: 'blank' };
 let currentRunId = null;
 let eventSource = null;
 let lastSeq = 0;
+let lastMode = 'review'; // 失败重试用：记录最近一次发起的模式
+let isReplayView = false; // ?run= 回访（刷新/返回恢复）时：done 后停留在研究台，不自动跳报告
 
 // ---------- 通知（一行红/灰字，不弹窗） ----------
 let noticeTimer = null;
@@ -81,13 +94,46 @@ function restoreDrafts() {
   } catch { /* 忽略 */ }
 }
 
-// ---------- 视图切换 ----------
+// ---------- 视图切换（URL 同步：刷新后保持当前视图，不回首页） ----------
+function currentView() {
+  if (!els.entry.hidden) return 'entry';
+  if (!els.desk.hidden) return 'desk';
+  return 'report';
+}
 function showView(name) {
+  const from = currentView();
   els.entry.hidden = name !== 'entry';
   els.desk.hidden = name !== 'desk';
   els.report.hidden = name !== 'report';
-  if (name !== 'entry') window.scrollTo({ top: 0 });
+  if (name !== 'entry' && from !== name) window.scrollTo({ top: 0 });
+  // URL 与视图同步：回首页清掉 run/report 参数；进 desk/report 保持参数可刷新恢复
+  if (name === 'entry') {
+    if (location.search) history.replaceState(null, '', location.pathname + (location.hash || ''));
+  }
 }
+
+// 返回按钮：上一视图是报告则回报告（再试一次），否则回首页
+function goBack() {
+  const params = new URLSearchParams(location.search);
+  const runId = params.get('run');
+  const reportId = params.get('report');
+  if (reportId || currentRunId) {
+    const target = reportId || currentRunId;
+    loadReport(target);
+  } else if (runId) {
+    currentRunId = runId;
+    isReplayView = true; // 返回恢复：同刷新回访，完成停在研究台
+    eventSource?.close();
+    resetDesk('');
+    showView('desk');
+    connectEvents(runId);
+  } else {
+    showView('entry');
+    applyRoute();
+  }
+}
+els.deskBack.addEventListener('click', goBack);
+els.reportBack.addEventListener('click', goBack);
 
 // ---------- 研究台 ----------
 function stepNode(step) {
@@ -156,12 +202,64 @@ function resetDesk(question) {
   setGauge(0, '准备中');
   els.resumeNote.classList.remove('show');
   els.queueNote.hidden = true;
+  els.retryBtn.hidden = true;
   setDeskState('running', '分析中');
   els.deskTrace.textContent = '';
+  els.cynicPanel.hidden = true;
+  els.cynicFeed.replaceChildren();
+  setCynicState('running', '找茬中');
   // 骨架步骤：后续事件推进状态
   stepNode({ key: 'parse', title: '解析输入', state: 'idle' });
   stepNode({ key: 'report', title: '生成报告', state: 'idle' });
   setStep('parse', { state: 'run' });
+}
+
+// ---------- 杠精 Agent 发言流（P1 双角色） ----------
+function cynicStep(patch) {
+  let node = els.cynicFeed.querySelector(`[data-key="${patch.key}"]`);
+  if (!node) {
+    node = document.createElement('div');
+    node.className = `cynic-line ${patch.state || 'idle'}`;
+    node.dataset.key = patch.key;
+    const ico = document.createElement('span');
+    ico.className = 'cynic-ico';
+    const main = document.createElement('div');
+    main.className = 'cynic-main';
+    node.append(ico, main);
+    node._main = main;
+    els.cynicFeed.append(node);
+  }
+  if (patch.state) node.className = `cynic-line ${patch.state}`;
+  if (patch.title || patch.detail) {
+    const line = document.createElement('div');
+    line.className = 'cynic-text';
+    if (patch.title) {
+      const b = document.createElement('b');
+      b.textContent = patch.title;
+      line.append(b);
+    }
+    if (patch.detail) line.append(document.createTextNode(patch.detail));
+    node._main.append(line);
+    node._main.scrollIntoView?.({ block: 'nearest' });
+  }
+  if (patch.chips?.length) {
+    const row = document.createElement('div');
+    row.className = 'cynic-chips';
+    for (const chip of patch.chips) {
+      const c = document.createElement('span');
+      c.className = `chip-mini${chip.kind ? ' ' + chip.kind : ''}`;
+      c.textContent = chip.text;
+      row.append(c);
+    }
+    node._main.append(row);
+  }
+  return node;
+}
+
+function setCynicState(state, text) {
+  if (els.cynicPanel.hidden) return;
+  els.cynicState.className = `state-pill ${state}`;
+  els.cynicStateText.textContent = text;
 }
 
 function setDeskState(state, text) {
@@ -251,11 +349,43 @@ function handleEvent(event) {
       for (const step of els.feed.querySelectorAll('.step.run')) step.className = 'step done';
       setGauge(100, '完成');
       setDeskState('done', '已完成');
-      if (currentRunId) loadReport(currentRunId);
+      // 主动发起：自动进报告；回访（刷新/返回恢复）：停在研究台，出「查看战报」入口
+      if (isReplayView) {
+        const viewBtn = document.createElement('button');
+        viewBtn.className = 'btn primary small';
+        viewBtn.textContent = '查看战报 →';
+        viewBtn.onclick = () => { if (currentRunId) loadReport(currentRunId); };
+        els.deskTrace.textContent = '';
+        els.deskTrace.append(viewBtn);
+      } else if (currentRunId) {
+        loadReport(currentRunId);
+      }
+      break;
+    case 'cynic_start':
+      els.cynicPanel.hidden = false;
+      setCynicState('running', '找茬中');
+      cynicStep({ key: 'cynic-boot', state: 'run', title: '接手草稿', detail: '—— 主审在检索，我独立读稿找茬' });
+      break;
+    case 'cynic_done': {
+      setCynicState('done', '找茬完成');
+      cynicStep({ key: 'cynic-boot', state: 'done' });
+      for (let i = 1; i <= (data.nitpicks || 0); i++) {
+        cynicStep({ key: `nit-${i}`, state: 'done', title: `找茬 ${'①②③④⑤'[i - 1] || i}`, detail: '—— 最狠的杠法已就位' });
+      }
+      const chips = [];
+      if (data.own_rating) chips.push({ text: `杠精评级 ${data.own_rating}`, kind: 'warn' });
+      if (data.disagreements) chips.push({ text: `与主审分歧 ${data.disagreements} 处` });
+      if (chips.length) cynicStep({ key: 'cynic-sum', state: 'done', chips });
+      break;
+    }
+    case 'cynic_failed':
+      setCynicState('failed', '找茬失败');
+      cynicStep({ key: 'cynic-boot', state: 'fail', title: '杠精缺席', detail: `—— ${data.message || '本次未能完成对抗审阅'}（主审报告不受影响）` });
       break;
     case 'failed':
       for (const step of els.feed.querySelectorAll('.step.run')) step.className = 'step fail';
       setDeskState('failed', '失败');
+      els.retryBtn.hidden = false;
       notify(data.message ? `分析失败：${data.message}` : '分析失败，请重试', 'error', true);
       break;
   }
@@ -267,7 +397,7 @@ function connectEvents(runId) {
   const source = new EventSource(`/api/run/${runId}/events`);
   eventSource = source;
   let reconnects = 0;
-  const types = ['queued', 'start', 'parse', 'search_start', 'search_done', 'benchmark_start', 'benchmark_done', 'evidence', 'budget', 'final_start', 'done', 'failed'];
+  const types = ['queued', 'start', 'parse', 'search_start', 'search_done', 'benchmark_start', 'benchmark_done', 'evidence', 'budget', 'final_start', 'cynic_start', 'cynic_done', 'cynic_failed', 'done', 'failed'];
   for (const type of types) {
     source.addEventListener(type, (message) => {
       try { handleEvent(JSON.parse(message.data)); } catch { /* 单条事件解析失败不致命 */ }
@@ -287,6 +417,8 @@ async function startAnalysis(mode) {
   const draft = els.reviewDraft.value.trim();
   if (mode === 'radar' && !question) return notify('先输入一个问题，或从热榜选一个');
   if (mode === 'review' && !draft) return notify('先粘贴草稿，再开始试麦');
+  lastMode = mode;
+  isReplayView = false; // 主动发起：完成后自动进报告
 
   const button = mode === 'radar' ? els.radarStart : els.reviewStart;
   button.disabled = true;
@@ -313,40 +445,15 @@ async function startAnalysis(mode) {
 
 els.radarStart.addEventListener('click', () => startAnalysis('radar'));
 els.reviewStart.addEventListener('click', () => startAnalysis('review'));
+// 失败态重试：用表单里现有的输入重新发起（草稿仍在输入框/sessionStorage 中）
+els.retryBtn.addEventListener('click', () => startAnalysis(lastMode));
 
 // ---------- 战报卡渲染 ----------
-function renderReport(runId, report) {
-  const r = report;
-  els.rGrade.textContent = r.rating || '–';
-  els.rTitle.textContent = r.question_title || '（未命名）';
-
-  const benchmarks = r.coverage?.benchmarks || [];
-  const recent = r.coverage?.recent || [];
-  const argMap = r.coverage?.argument_map || [];
-  const evidenceCount = {};
-  for (const item of [...benchmarks, ...recent, ...argMap]) {
-    const level = String(item.evidence_level || '推导');
-    evidenceCount[level] = (evidenceCount[level] || 0) + 1;
-  }
-  const evidenceText = Object.entries(evidenceCount).map(([k, v]) => `${k}×${v}`).join(' ');
-  els.rScale.innerHTML = '';
-  els.rScale.append('对比 ');
-  const b1 = document.createElement('b'); b1.textContent = `${benchmarks.length} 条标杆回答`;
-  els.rScale.append(b1, '（社区序）+ ');
-  const b2 = document.createElement('b'); b2.textContent = `${recent.length} 条近期讨论`;
-  els.rScale.append(b2, evidenceText ? ` · 证据 ${evidenceText}` : '');
-
-  const inc = r.increment || {};
-  const uniqN = (inc.unique || []).length;
-  const covN = (inc.covered || []).length;
-  const blankN = (inc.blanks || []).length;
-  els.rVerdict.hidden = false;
-  els.rVerdict.innerHTML = '';
-  els.rVerdict.append('结论：');
-  const strong = document.createElement('b');
-  strong.textContent = `${uniqN} 个独有增量`;
-  els.rVerdict.append(strong, ` · ${covN} 个已被覆盖 · ${blankN} 个相邻空白`);
-
+/** 四维条 + 增量地图（含地块点击详情）——由 renderReport 调用 */
+function renderReportCharts(r, argMap) {
+  // 防御性清理：避免 renderReport 多次调用累积多个 arg-detail 节点
+  const staleDetail = document.getElementById('arg-detail');
+  if (staleDetail) staleDetail.remove();
   els.rBars.replaceChildren();
   for (const [key, label, isEst] of RADAR_DIMS) {
     const value = Math.max(0, Math.min(10, Number(r.radar?.[key] ?? 0)));
@@ -379,16 +486,98 @@ function renderReport(runId, report) {
   for (const slot of argMap) {
     const plot = document.createElement('div');
     plot.className = `arg-plot ${PLOT_LABEL[slot.status] || 'cov'}`;
-    plot.title = slot.source_urls?.length ? `依据：${slot.source_urls.join('、')}` : '推导判断，无直接原文';
+    plot.tabIndex = 0; // 可聚焦：键盘也能看详情
+    const evLabel = EVIDENCE_LABEL[slot.evidence_level] || slot.evidence_level || '推导';
     const ev = document.createElement('span');
     ev.className = 'p-e';
-    ev.textContent = slot.evidence_level || '推导';
+    ev.textContent = evLabel;
     const text = document.createElement('span');
     text.className = 'p-t';
     text.textContent = slot.argument;
     plot.append(ev, text);
+    // 悬停完整论点（原生 title 兜底）；点击在下方详情区展开
+    plot.title = `${slot.argument}\n依据：${evLabel}${slot.source_urls?.length ? `\n原文：${slot.source_urls[0]}` : ''}`;
+    plot.addEventListener('click', () => {
+      for (const p of els.rArgmap.querySelectorAll('.arg-plot')) p.classList.remove('active');
+      plot.classList.add('active');
+      renderArgDetail(slot, evLabel);
+    });
     els.rArgmap.append(plot);
   }
+  // 地块详情区（默认显示第一块，避免空区）
+  const detailBox = document.createElement('div');
+  detailBox.className = 'arg-detail';
+  detailBox.id = 'arg-detail';
+  els.rArgmap.after(detailBox);
+  if (argMap[0]) {
+    els.rArgmap.querySelector('.arg-plot')?.classList.add('active');
+    renderArgDetail(argMap[0], EVIDENCE_LABEL[argMap[0].evidence_level] || argMap[0].evidence_level || '推导');
+  }
+}
+
+/** 地块点击后的详情：完整论点 + 状态 + 判断依据 + 原文链接 */
+function renderArgDetail(slot, evLabel) {
+  const box = document.getElementById('arg-detail');
+  if (!box) return;
+  box.replaceChildren();
+  const head = document.createElement('div');
+  head.className = 'arg-detail-head';
+  const statusName = { covered: '已被覆盖', unique: '你的独有', blank: '相邻空白' }[slot.status] || slot.status;
+  const tag = document.createElement('span');
+  tag.className = `tag ${PLOT_LABEL[slot.status] || 'cov'}`;
+  tag.textContent = statusName;
+  const ev = document.createElement('span');
+  ev.className = 'badge-evi';
+  ev.textContent = `依据：${evLabel}`;
+  head.append(tag, ev);
+  const body = document.createElement('p');
+  body.className = 'arg-detail-text';
+  body.textContent = slot.argument;
+  box.append(head, body);
+  for (const url of slot.source_urls || []) {
+    const link = document.createElement('a');
+    link.className = 'arg-detail-link';
+    link.href = url;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    link.textContent = '查看原文 ↗';
+    box.append(link);
+    break; // 主依据一条即够，避免堆链接
+  }
+}
+
+function renderReport(runId, report) {
+  const r = report;
+  els.rGrade.textContent = r.rating || '–';
+  els.rTitle.textContent = r.question_title || '（未命名）';
+
+  const benchmarks = r.coverage?.benchmarks || [];
+  const recent = r.coverage?.recent || [];
+  const argMap = r.coverage?.argument_map || [];
+  renderReportCharts(r, argMap);
+  const evidenceCount = {};
+  for (const item of [...benchmarks, ...recent, ...argMap]) {
+    const label = EVIDENCE_LABEL[item.evidence_level] || item.evidence_level || '推导';
+    evidenceCount[label] = (evidenceCount[label] || 0) + 1;
+  }
+  const evidenceText = Object.entries(evidenceCount).map(([k, v]) => `${k}×${v}`).join(' ');
+  els.rScale.innerHTML = '';
+  els.rScale.append('对比 ');
+  const b1 = document.createElement('b'); b1.textContent = `${benchmarks.length} 条标杆回答`;
+  els.rScale.append(b1, '（社区序）+ ');
+  const b2 = document.createElement('b'); b2.textContent = `${recent.length} 条近期讨论`;
+  els.rScale.append(b2, evidenceText ? ` · 依据 ${evidenceText}` : '');
+
+  const inc = r.increment || {};
+  const uniqN = (inc.unique || []).length;
+  const covN = (inc.covered || []).length;
+  const blankN = (inc.blanks || []).length;
+  els.rVerdict.hidden = false;
+  els.rVerdict.innerHTML = '';
+  els.rVerdict.append('结论：');
+  const strong = document.createElement('b');
+  strong.textContent = `${uniqN} 个独有增量`;
+  els.rVerdict.append(strong, ` · ${covN} 个已被覆盖 · ${blankN} 个相邻空白`);
 
   const renderLinkList = (ul, items, renderMeta) => {
     ul.replaceChildren();
@@ -418,7 +607,7 @@ function renderReport(runId, report) {
       ul.append(li);
     }
   };
-  renderLinkList(els.rBenchmarks, benchmarks, (item) => ({ text: item.evidence_level || 'L1' }));
+  renderLinkList(els.rBenchmarks, benchmarks, (item) => ({ text: EVIDENCE_LABEL[item.evidence_level] || item.evidence_level || '社区排序' }));
   renderLinkList(els.rRecent, recent, (item) => ({ text: `${item.votes ?? 0}赞 ${item.authority || ''}`.trim(), l2: true }));
   els.rBmCount.textContent = String(benchmarks.length);
   els.rRecentCount.textContent = String(recent.length);
@@ -459,8 +648,8 @@ function renderReport(runId, report) {
     src.className = 'src';
     const badge = document.createElement('span');
     const real = item.evidence === 'real';
-    badge.className = `badge-evi ${real ? 'real' : 'infer'}`;
-    badge.textContent = real ? 'L3 真实评论' : '推导';
+      badge.className = `badge-evi ${real ? 'real' : 'infer'}`;
+      badge.textContent = real ? '真实评论佐证' : '推导';
     src.append(badge, document.createTextNode(item.source || ''));
     row.append(left, arrow, right, src);
     els.rControversy.append(row);
@@ -473,9 +662,100 @@ function renderReport(runId, report) {
     els.rControversy.append(empty);
   }
 
+  // ---------- 评审团分歧（P1 双角色） ----------
+  const cynic = r.cynic;
+  els.rJurySec.hidden = !cynic;
+  if (cynic) {
+    els.rJuryVerdict.replaceChildren();
+    const chiefSide = document.createElement('div');
+    chiefSide.className = 'jury-side chief';
+    chiefSide.append(Object.assign(document.createElement('span'), { className: 'jury-name', textContent: '主审 Agent' }));
+    const chiefGrade = document.createElement('b');
+    chiefGrade.textContent = r.rating || '–';
+    chiefSide.append(chiefGrade);
+    chiefSide.append(Object.assign(document.createElement('span'), { className: 'jury-cap', textContent: '研究型 · 检索对比' }));
+    const vs = document.createElement('span');
+    vs.className = 'jury-vs';
+    vs.textContent = 'VS';
+    const cynicSide = document.createElement('div');
+    cynicSide.className = 'jury-side cynic';
+    cynicSide.append(Object.assign(document.createElement('span'), { className: 'jury-name', textContent: '杠精 Agent' }));
+    const cynicGrade = document.createElement('b');
+    cynicGrade.textContent = cynic.own_rating || '–';
+    if (cynic.own_rating && cynic.own_rating !== r.rating) cynicGrade.className = 'diff';
+    cynicSide.append(cynicGrade);
+    cynicSide.append(Object.assign(document.createElement('span'), { className: 'jury-cap', textContent: '对抗型 · 专门找茬' }));
+    els.rJuryVerdict.append(chiefSide, vs, cynicSide);
+
+    els.rJuryDisagreements.replaceChildren();
+    for (const d of cynic.disagreements || []) {
+      const row = document.createElement('div');
+      row.className = 'jury-row';
+      const point = document.createElement('div');
+      point.className = 'jury-point';
+      point.textContent = d.point || '分歧';
+      const body = document.createElement('div');
+      body.className = 'jury-body';
+      const chief = document.createElement('div');
+      chief.className = 'jury-chief';
+      chief.append(Object.assign(document.createElement('i'), { textContent: '主审' }), document.createTextNode(d.chief || ''));
+      const bar = document.createElement('div');
+      bar.className = 'jury-bar';
+      const cynicView = document.createElement('div');
+      cynicView.className = 'jury-cynic';
+      cynicView.append(Object.assign(document.createElement('i'), { textContent: '杠精' }), document.createTextNode(d.cynic || ''));
+      body.append(chief, bar, cynicView);
+      row.append(point, body);
+      els.rJuryDisagreements.append(row);
+    }
+    if (!cynic.disagreements?.length) {
+      const note = document.createElement('p');
+      note.className = 'sub';
+      note.style.marginLeft = '26px';
+      note.textContent = '两位评审这次意见一致。';
+      els.rJuryDisagreements.append(note);
+    }
+
+    els.rNitpicks.replaceChildren();
+    for (const n of cynic.nitpicks || []) {
+      const row = document.createElement('div');
+      row.className = 'nit-row';
+      const head = document.createElement('div');
+      head.className = 'nit-head';
+      const obj = document.createElement('b');
+      obj.textContent = n.objection || '';
+      const badge = document.createElement('span');
+      const real = n.evidence === 'real';
+      badge.className = `badge-evi ${real ? 'real' : 'infer'}`;
+      badge.textContent = real ? '真实评论佐证' : '推导';
+      head.append(obj, badge);
+      const why = document.createElement('div');
+      why.className = 'nit-why';
+      why.textContent = n.why ? `为什么社区会这么杠：${n.why}` : '';
+      const src = document.createElement('div');
+      src.className = 'nit-src';
+      src.textContent = real ? `评论原文：「${n.source || ''}」` : (n.source || '');
+      row.append(head, why);
+      if (src.textContent) row.append(src);
+      els.rNitpicks.append(row);
+    }
+    els.rNitCount.textContent = String((cynic.nitpicks || []).length);
+  }
+
   const trace = r.trace || {};
   const time = trace.generated_at ? new Date(trace.generated_at).toLocaleString('zh-CN', { hour12: false }) : '';
-  els.rTrace.textContent = `run ${String(runId).slice(0, 8)}… · ${trace.tool_calls ?? '–'}/6 次检索 · ${time}\n${r.meta?.note || '判断基于检索摘要（非全文），点击论点对照原文'}`;
+  // trace 行：一行短摘要；完整证据边界说明放独立可展开区块（长文不再被裁切）
+  els.rTrace.textContent = `run ${String(runId).slice(0, 8)}… · ${trace.tool_calls ?? '–'}/6 次检索 · ${time}`;
+  const note = String(r.meta?.note || '').trim();
+  if (note) {
+    els.rBoundary.hidden = false;
+    els.rBoundaryBody.textContent = note;
+    els.rBoundaryBody.classList.remove('expanded');
+    els.rBoundaryToggle.textContent = '展开全部 ▾';
+    els.rBoundaryToggle.setAttribute('aria-expanded', 'false');
+  } else {
+    els.rBoundary.hidden = true;
+  }
 
   els.copyLink.onclick = async () => {
     const url = `${location.origin}/?report=${runId}`;
@@ -488,13 +768,19 @@ function renderReport(runId, report) {
     }
   };
   els.restart.onclick = () => {
-    history.replaceState(null, '', '/#review');
     showView('entry');
     applyRoute();
   };
 
   showView('report');
 }
+
+// 证据边界说明：展开 / 收起（长文完整可读）
+els.rBoundaryToggle?.addEventListener('click', () => {
+  const expanded = els.rBoundaryBody.classList.toggle('expanded');
+  els.rBoundaryToggle.textContent = expanded ? '收起 ▴' : '展开全部 ▾';
+  els.rBoundaryToggle.setAttribute('aria-expanded', String(expanded));
+});
 
 async function loadReport(runId) {
   try {
@@ -589,10 +875,10 @@ function boot() {
     loadReport(reportId);
   } else if (runId) {
     currentRunId = runId;
+    isReplayView = true; // 回访：回放过程，完成后停在研究台（「查看战报」入口），不强制跳报告
     resetDesk('');
     showView('desk');
     connectEvents(runId);
-    // 若服务端已完成，SSE 回放里即有 done → 自动进报告
   }
 }
 boot();

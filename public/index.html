@@ -88,6 +88,7 @@
       <section class="desk" id="desk" hidden>
         <div class="desk-head">
           <div class="desk-head-left">
+            <button class="btn ghost small back-btn" id="desk-back" type="button">← 返回</button>
             <h2>研究台</h2>
             <span class="desk-q" id="desk-q"></span>
           </div>
@@ -112,13 +113,26 @@
               <h3>证据流</h3>
               <div class="evidence-stream" id="evidence-stream"></div>
             </div>
-            <div class="legend"><b>证据等级</b>　L1 标杆序 · L2 富字段检索<br />L3 真实评论 · L4 AI 转述（末级）</div>
+            <div class="legend"><b>判断依据</b>　社区排序 · 站内检索 · 真实评论</div>
           </aside>
+        </div>
+        <!-- 杠精 Agent · 对抗审阅发言流（P1 双角色，review 模式出现） -->
+        <div class="cynic-panel" id="cynic-panel" hidden>
+          <div class="cynic-head">
+            <span class="cynic-ava" aria-hidden="true">杠</span>
+            <div>
+              <b>杠精 Agent</b>
+              <span class="cynic-role">对抗审阅 · 与主审平级，专门找茬</span>
+            </div>
+            <span class="state-pill running" id="cynic-state"><span class="pulse-dot"></span><span id="cynic-state-text">找茬中</span></span>
+          </div>
+          <div class="cynic-feed" id="cynic-feed"></div>
         </div>
         <div class="desk-foot">
           <span class="trace" id="desk-trace"></span>
           <span class="queue-note" id="queue-note" hidden></span>
           <span class="resume" id="resume-note">✓ 断线已续传，任务未重跑</span>
+          <button class="btn primary small" id="retry-btn" type="button" hidden>重试本次分析</button>
         </div>
       </section>
 
@@ -145,7 +159,7 @@
               <span class="l1"><i></i>已被覆盖</span>
               <span class="l2"><i></i>你的独有</span>
               <span class="l3"><i></i>相邻空白</span>
-              <span class="tip">地块角标 = 证据等级</span>
+              <span class="tip">鼠标悬停 / 点击地块看完整论点</span>
             </div>
             <div class="evidence-cols">
               <div class="evidence-col">
@@ -171,8 +185,28 @@
             <div id="r-controversy"></div>
           </div>
 
+          <!-- 评审团分歧（P1 双角色：内部有分歧的评审团，比单 Agent 可信） -->
+          <div class="report-sec jury-sec" id="r-jury-sec" hidden>
+            <h3><span class="no">4</span>评审团分歧</h3>
+            <p class="sub">主审与杠精各执一词——分歧本身就是信息</p>
+            <div class="jury-verdict" id="r-jury-verdict"></div>
+            <div class="jury-list" id="r-jury-disagreements"></div>
+            <h4 class="jury-nit-title">杠精找茬 3 条<span class="cnt" id="r-nit-count"></span></h4>
+            <div class="nit-list" id="r-nitpicks"></div>
+          </div>
+
           <div class="report-foot">
-            <div class="trace" id="r-trace"></div>
+            <div class="report-foot-top">
+              <button class="btn ghost small back-btn" id="report-back" type="button">← 返回</button>
+              <div class="trace" id="r-trace"></div>
+            </div>
+            <div class="report-boundary" id="r-boundary" hidden>
+              <div class="boundary-head">
+                <b>证据边界说明</b>
+                <button class="boundary-toggle" id="r-boundary-toggle" type="button" aria-expanded="false">展开全部 ▾</button>
+              </div>
+              <div class="boundary-body" id="r-boundary-body"></div>
+            </div>
             <div class="report-actions">
               <button class="btn ghost small" id="copy-link" type="button">复制链接</button>
               <button class="btn ghost small" id="restart" type="button">再试一次</button>
@@ -182,7 +216,10 @@
       </section>
     </main>
 
-    <footer class="site-foot">试麦员 Soundcheck · 知乎黑客松 2026 · 证据四层链：标杆序 L1 / 定向补强 L2 / 真实评论 L3 / AI 转述 L4</footer>
+    <footer class="site-foot">
+      <span>试麦员 Soundcheck · 知乎黑客松 2026 · 判断依据：社区排序 / 站内检索 / 真实评论（每条结论标注来源）</span>
+      <small class="evidence-key" aria-label="证据分级工程对照">L1 社区排序 · L2 站内检索 · L3 真实评论 · L4 AI 转述</small>
+    </footer>
 
     <script type="module" src="/app.js"></script>
   </body>

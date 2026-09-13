@@ -92,7 +92,7 @@ try {
       }
     } catch { /* abort 触发，正常 */ }
     clearTimeout(timer);
-    record('SSE 事件流（含 id 序号与 done 事件）', sseText.includes('event: done') && /id: \d+/.test(sseText));
+    record('SSE 事件流（含 id 序号、done 与杠精事件）', sseText.includes('event: done') && /id: \d+/.test(sseText) && sseText.includes('event: cynic_done'));
   }
 
   // 5. 报告回访（三段结构 + 评级 + 证据角标）
@@ -104,7 +104,7 @@ try {
     Array.isArray(r.increment?.unique) &&
     Array.isArray(r.controversy?.objections) &&
     Boolean(r.meta?.note);
-  record('GET /api/report/:runId（三段 JSON + 评级 + 证据角标）', structureOk === true, `rating=${r.rating} tool_calls=${r.trace?.tool_calls}`);
+  record('GET /api/report/:runId（三段 JSON + 评级 + 证据角标）', structureOk === true, `rating=${r.rating} tool_calls=${r.trace?.tool_calls} cynic=${r.cynic ? `${r.cynic.nitpicks?.length}条找茬` : '无'}`);
 
   // 6. 热榜入口
   const hot = await api('/api/hot');
@@ -113,6 +113,53 @@ try {
   // 7. 运行时状态
   const stats = await api('/api/stats');
   record('GET /api/stats（闸门/内存运行数）', stats.status === 200 && stats.payload.ok === true, JSON.stringify(stats.payload.gate || {}).slice(0, 80));
+
+  // 8. 重启回放（G2 核心验收：events 落 SQLite，?run= 链接重启后依然能回放过程）——仅本地模式可测
+  if (!externalUrl) {
+    child.kill();
+    await new Promise((resolve) => { child.on('exit', resolve); setTimeout(resolve, 2000); });
+    child = spawn(process.execPath, ['server.mjs'], {
+      cwd: projectRoot,
+      env: { ...process.env, PORT: String(port), HOST: '127.0.0.1', SMOKE: '1', LLM_MOCK: '1', DATA_DIR: dataDir },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    child.stderr.on('data', (chunk) => process.stderr.write(`[server] ${chunk}`));
+    let revived = false;
+    for (let i = 0; i < 40 && !revived; i++) {
+      await sleep(500);
+      try { revived = (await fetch(`${baseUrl}/api/health`)).ok; } catch { /* 等待启动 */ }
+    }
+    if (!revived) throw new Error('重启后服务 20s 内未启动');
+
+    const statusAfter = await api(`/api/run/${runId}/status`);
+    const replay = await fetch(`${baseUrl}/api/run/${runId}/events`, { headers: { Accept: 'text/event-stream' } });
+    const controller2 = new AbortController();
+    const timer2 = setTimeout(() => controller2.abort(), 5000);
+    let replayText = '';
+    try {
+      const reader = replay.body.getReader();
+      const decoder = new TextDecoder();
+      while (!replayText.includes('event: done')) {
+        const { value, done: streamDone } = await reader.read();
+        if (streamDone) break;
+        replayText += decoder.decode(value, { stream: true });
+        if (replayText.includes('event: done')) controller2.abort();
+      }
+    } catch { /* abort 触发，正常 */ }
+    clearTimeout(timer2);
+    const replayOk = statusAfter.payload.status === 'done' &&
+      replay.status === 200 &&
+      replayText.includes('event: parse') && replayText.includes('event: done') && replayText.includes('event: cynic_done');
+    record('重启后 ?run= 回放（events 落 SQLite，状态与杠精事件完整）', replayOk === true, `事件 ${replayText.split('id: ').length - 1} 条`);
+
+    // 重启后报告依旧可回访（reports 与 events 同级可靠）
+    const reportAfter = await api(`/api/report/${runId}`);
+    record('重启后报告回访（?report= 分享链接存活）', reportAfter.status === 200 && reportAfter.payload.result?.rating === r.rating, `rating=${reportAfter.payload.result?.rating}`);
+
+    // 未知 run → 404（不伪造回放）
+    const ghost = await api(`/api/run/00000000-0000-0000-0000-000000000000/events`);
+    record('未知 run → 404（不伪造回放）', ghost.status === 404);
+  }
 } catch (error) {
   record('烟测执行', false, String(error.message || error));
 } finally {
