@@ -21,8 +21,9 @@
           <span class="brand-name">试麦员<em>Soundcheck</em></span>
         </div>
         <div class="account-area" id="account-area">
-          <span id="account-hint">登录可累计人气</span>
+          <span id="account-hint">登录解锁我的创作</span>
           <a class="btn-zhihu" href="/api/oauth/start" id="login-btn"><b>知</b>知乎登录</a>
+          <span class="account-user" id="account-user" hidden></span>
         </div>
       </div>
     </header>
@@ -73,6 +74,15 @@
               <span class="hint">约 1-2 分钟 · 6 次检索</span>
             </div>
           </div>
+        </section>
+
+        <!-- 我的创作（登录解锁）：计登录数不拦人——数据来自知乎授权公开接口，本站不落库 -->
+        <section class="mine" id="mine" hidden>
+          <div class="mine-head">
+            <span>我的创作 <em>已解锁</em></span>
+            <span class="mine-note">知乎授权 · 仅公开数据 · 本站不存储</span>
+          </div>
+          <div class="mine-list" id="mine-list"></div>
         </section>
 
         <section class="hot" id="hot" hidden>

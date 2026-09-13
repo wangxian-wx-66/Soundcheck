@@ -75,6 +75,12 @@ function headers(type = 'application/json; charset=utf-8') {
 }
 function json(response, status, payload) { response.writeHead(status, headers()); response.end(JSON.stringify(payload)); }
 function redirect(response, location) { response.writeHead(302, { Location: location, 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' }); response.end(); }
+/** 登录回访地址 + oauth 结果参数拼接（正确处理 #hash，避免参数落进 hash 段） */
+function appendOauthParam(pathname, value) {
+  const target = new URL(pathname, 'http://local');
+  target.searchParams.set('oauth', value);
+  return target.pathname + target.search + target.hash;
+}
 
 async function readJsonBody(request, limitBytes = 1_000_000) {
   const chunks = [];
@@ -119,21 +125,30 @@ function handleRunEvents(request, response, runId) {
 const server = http.createServer(async (request, response) => {
   const url = new URL(request.url, `http://${config.host}:${config.port}`);
   try {
-    // ---- OAuth（官方脚手架路由，保持不动） ----
+    // ---- OAuth（官方脚手架路由；start/callback 扩展了回访地址传递） ----
     if (request.method === 'GET' && url.pathname === '/api/health') {
       return json(response, 200, { ok: true, project: config.projectName, oauthEnabled: true, llm: llm.configured ? (llm.mock ? 'mock' : llm.model) : 'missing_key', zhihu: zhihu.configured ? 'ready' : 'missing_secret', quotaLow });
     }
     if (request.method === 'GET' && url.pathname === '/api/oauth/status') return json(response, 200, { ok: true, ...(await oauth.status(request, response)) });
     if (request.method === 'GET' && url.pathname === '/api/oauth/start') {
-      try { return redirect(response, await oauth.start(request, response)); }
+      try { return redirect(response, await oauth.start(request, response, url.searchParams.get('from'))); }
       catch (error) { oauth.record(request, response, error); return redirect(response, '/?oauth=error'); }
     }
     if (request.method === 'GET' && url.pathname === '/auth/callback') {
-      try { await oauth.callback(request, response, url); return redirect(response, '/?oauth=success'); }
-      catch (error) { oauth.record(request, response, error); return redirect(response, '/?oauth=error'); }
+      try {
+        const back = await oauth.callback(request, response, url);
+        return redirect(response, appendOauthParam(back || '/', 'success'));
+      } catch (error) { oauth.record(request, response, error); return redirect(response, '/?oauth=error'); }
     }
     if (request.method === 'POST' && url.pathname === '/api/oauth/run-all') return json(response, 200, { ok: true, results: await oauth.runAll(request, response) });
     if (request.method === 'POST' && url.pathname === '/api/oauth/logout') { oauth.logout(request, response); return json(response, 200, { ok: true }); }
+
+    // ---- 个人历史（P0-B：登录解锁——计登录数不拦人；不登录时主功能全部可用） ----
+    if (request.method === 'GET' && url.pathname === '/api/user/contents') {
+      const limit = Math.min(Math.max(Number(url.searchParams.get('limit')) || 10, 1), 50);
+      const result = await oauth.contents(request, response, { limit });
+      return json(response, 200, { ok: true, ...result });
+    }
 
     // ---- 主管线（P0-A） ----
     if (request.method === 'POST' && url.pathname === '/api/analyze') {
@@ -182,8 +197,9 @@ const server = http.createServer(async (request, response) => {
     response.end(await readFile(filePath));
   } catch (error) {
     if (error instanceof ZhihuApiError) return json(response, 502, { ok: false, error: { code: error.code, message: error.message } });
+    const authError = error.code === 'LOGIN_REQUIRED' || error.code === 'TOKEN_EXPIRED'; // 个人历史未登录/过期 → 401（前端静默降级，不拦功能）
     const clientError = error.code === 'BAD_JSON' || error.code === 'PAYLOAD_TOO_LARGE' || error.code === 'BAD_REQUEST';
-    json(response, clientError ? 400 : 500, { ok: false, error: { code: error.code || 'REQUEST_FAILED', message: error.message } });
+    json(response, authError ? 401 : clientError ? 400 : 500, { ok: false, error: { code: error.code || 'REQUEST_FAILED', message: error.message } });
   }
 });
 

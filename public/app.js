@@ -4,7 +4,8 @@ const $ = (selector) => document.querySelector(selector);
 
 const els = {
   notice: $('#notice'), noticeText: $('#notice-text'),
-  accountHint: $('#account-hint'), loginBtn: $('#login-btn'),
+  accountHint: $('#account-hint'), loginBtn: $('#login-btn'), accountUser: $('#account-user'),
+  mine: $('#mine'), mineList: $('#mine-list'),
   cardRadar: $('#card-radar'), cardReview: $('#card-review'),
   radarQuestion: $('#radar-question'), radarStart: $('#radar-start'),
   reviewQuestion: $('#review-question'), reviewDraft: $('#review-draft'), reviewStart: $('#review-start'),
@@ -839,26 +840,140 @@ els.hotRefresh.addEventListener('click', () => {
   renderHot();
 });
 
-// ---------- OAuth 状态（登录人数计人气奖） ----------
+// ---------- OAuth 登录态（P0-B：登录解锁个人历史——计登录数，不拦任何主功能） ----------
+// 创作类型 → 中文标签（知乎用户数据接口 ContentType 口径）
+const CONTENT_TYPE_LABEL = { answer: '回答', article: '文章', zvideo: '视频', pin: '想法', question: '问题' };
+
+function showLoginEntry() {
+  els.accountHint.hidden = false;
+  els.loginBtn.hidden = false;
+  els.accountUser.hidden = true;
+  els.mine.hidden = true;
+  // 登录回访：记住当前视图（?run=/?report=/hash），授权往返后原界面不丢
+  els.loginBtn.href = `/api/oauth/start?from=${encodeURIComponent(location.pathname + location.search + location.hash)}`;
+}
+
+function renderAccountUser(profile) {
+  els.accountHint.hidden = true;
+  els.loginBtn.hidden = true;
+  els.accountUser.replaceChildren();
+  if (profile?.avatarUrl) {
+    const img = document.createElement('img');
+    img.src = profile.avatarUrl;
+    img.alt = '知乎头像';
+    els.accountUser.append(img);
+  }
+  const who = document.createElement('span');
+  who.className = 'who';
+  who.textContent = profile?.name || '已连接知乎账号';
+  if (profile?.headline) who.title = profile.headline;
+  const logout = document.createElement('button');
+  logout.type = 'button';
+  logout.className = 'btn-zhihu logout-btn';
+  logout.textContent = '退出';
+  logout.addEventListener('click', async () => {
+    try { await fetch('/api/oauth/logout', { method: 'POST' }); } catch { /* 忽略 */ }
+    showLoginEntry();
+    notify('已退出知乎登录', 'info');
+  });
+  els.accountUser.append(who, logout);
+  els.accountUser.hidden = false;
+}
+
 async function loadAccount() {
+  let connected = false;
+  let oauthError = null;
   try {
     const response = await fetch('/api/oauth/status');
     const payload = await response.json();
-    const profile = payload?.profile || payload?.account;
-    if (payload.ok && (profile?.name || payload.authorized === true)) {
-      els.loginBtn.hidden = true;
-      els.accountHint.textContent = profile?.name ? `已连接：${profile.name}` : '已连接知乎账号';
-      if (profile?.avatar || profile?.avatarUrl) {
-        const img = document.createElement('img');
-        img.src = profile.avatar || profile.avatarUrl;
-        img.alt = '知乎头像';
-        els.accountHint.before(img);
-      }
+    if (payload.ok && (payload.authorized === true || payload.profile)) {
+      connected = true;
+      renderAccountUser(payload.profile);
+      loadMine();
     }
+    if (payload?.error?.message) oauthError = payload.error.message;
   } catch { /* 未登录保持默认 */ }
+  if (!connected) showLoginEntry();
   const params = new URLSearchParams(location.search);
-  if (params.get('oauth') === 'success') notify('知乎账号已连接', 'info');
-  if (params.get('oauth') === 'error') notify('知乎登录未完成，可直接使用分析功能', 'info');
+  if (params.get('oauth') === 'success') {
+    notify(connected ? '知乎账号已连接，「我的创作」已解锁' : '知乎登录会话未建立，可直接使用分析功能', 'info');
+  }
+  if (params.get('oauth') === 'error') {
+    notify(oauthError ? `知乎登录未完成：${oauthError}` : '知乎登录未完成，可直接使用分析功能', 'info');
+  }
+}
+
+// ---------- 我的创作（个人历史：OAuth 创作列表，登录后解锁） ----------
+async function loadMine() {
+  try {
+    const response = await fetch('/api/user/contents?limit=10');
+    const payload = await response.json();
+    if (!response.ok || !payload.ok) return; // 401（未登录/过期）等静默降级，不影响主功能
+    renderMine(payload.items || []);
+  } catch { /* 静默：个人历史加载失败不阻塞 */ }
+}
+
+function formatMineStats(item) {
+  const parts = [`赞 ${item.like_count ?? 0}`, `评 ${item.comment_count ?? 0}`, `藏 ${item.favorite_count ?? 0}`];
+  if (item.created_at) {
+    const date = new Date(item.created_at * 1000);
+    parts.push(`${date.getMonth() + 1}/${date.getDate()}`);
+  }
+  return parts.join(' · ');
+}
+
+function renderMine(items) {
+  els.mineList.replaceChildren();
+  for (const item of items) {
+    const row = document.createElement('div');
+    row.className = 'mine-item';
+    const line = document.createElement('div');
+    line.className = 'mine-line';
+    const type = document.createElement('span');
+    type.className = `mine-type ${item.type || 'answer'}`;
+    type.textContent = CONTENT_TYPE_LABEL[item.type] || '内容';
+    const title = document.createElement('a');
+    title.className = 'mine-title';
+    title.href = item.url || '#';
+    title.target = '_blank';
+    title.rel = 'noopener noreferrer';
+    title.textContent = item.title || '（无标题）';
+    const stats = document.createElement('span');
+    stats.className = 'mine-stats';
+    stats.textContent = formatMineStats(item);
+    line.append(type, title, stats);
+    // 快捷入口：回答/问题 → 一键选题雷达（看该问题现在的论点版图，P3 复盘的前置钩子）
+    const questionUrl = String(item.url || '').match(/zhihu\.com\/question\/\d+/)?.[0];
+    if (questionUrl) {
+      const radar = document.createElement('button');
+      radar.type = 'button';
+      radar.className = 'mine-radar';
+      radar.textContent = '选题雷达 →';
+      radar.addEventListener('click', () => {
+        els.radarQuestion.value = questionUrl;
+        persistDrafts();
+        location.hash = '#radar';
+        applyRoute();
+        els.radarQuestion.focus();
+      });
+      line.append(radar);
+    }
+    row.append(line);
+    if (item.summary) {
+      const summary = document.createElement('p');
+      summary.className = 'mine-summary';
+      summary.textContent = item.summary;
+      row.append(summary);
+    }
+    els.mineList.append(row);
+  }
+  if (!items.length) {
+    const empty = document.createElement('p');
+    empty.className = 'mine-empty';
+    empty.textContent = '授权账号暂无公开创作。';
+    els.mineList.append(empty);
+  }
+  els.mine.hidden = false;
 }
 
 // ---------- 入口：?report= 回访 / ?run= 续看 ----------

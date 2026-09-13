@@ -110,6 +110,10 @@ try {
   const hot = await api('/api/hot');
   record('GET /api/hot（选题雷达数据源）', hot.status === 200 && Array.isArray(hot.payload.items) && hot.payload.items.length > 0);
 
+  // 6.5 个人历史（P0-B 登录解锁）：未登录 → 401 LOGIN_REQUIRED（不拦人：主功能全部可用）
+  const mine = await api('/api/user/contents?limit=10');
+  record('GET /api/user/contents（未登录 → 401，登录解锁）', mine.status === 401 && mine.payload.error?.code === 'LOGIN_REQUIRED', mine.payload.error?.code || '');
+
   // 7. 运行时状态
   const stats = await api('/api/stats');
   record('GET /api/stats（闸门/内存运行数）', stats.status === 200 && stats.payload.ok === true, JSON.stringify(stats.payload.gate || {}).slice(0, 80));
