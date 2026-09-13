@@ -3,28 +3,187 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>试麦员 Soundcheck · 知乎 OAuth Hello World</title>
+    <title>试麦员 Soundcheck · 开麦前，先试麦</title>
+    <meta name="description" content="知乎答主发布前的信息增量体检：已有回答覆盖了什么，你的增量在哪，评论区会怎么杠。" />
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
-    <main>
-      <header><span>知乎黑客松</span><b id="runtime">正在检查环境</b></header>
-      <section class="hero">
-        <p class="eyebrow">ZHIHU ACCOUNT / OAUTH</p>
-        <h1>知乎 OAuth<br />Hello World</h1>
-        <p>连接你的知乎账号，然后用登录账号各读取一条创作、关注和收藏数据。</p>
+    <header class="topbar">
+      <div class="topbar-inner">
+        <div class="brand">
+          <span class="brand-mark" aria-hidden="true">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+              <rect x="4.5" y="1" width="5" height="7" rx="2.5" stroke="#18181B" stroke-width="1.4"/>
+              <path d="M2.5 7a4.5 4.5 0 0 0 9 0" stroke="#18181B" stroke-width="1.4" stroke-linecap="round"/>
+              <line x1="7" y1="11.5" x2="7" y2="13.5" stroke="#18181B" stroke-width="1.4" stroke-linecap="round"/>
+            </svg>
+          </span>
+          <span class="brand-name">试麦员<em>Soundcheck</em></span>
+        </div>
+        <div class="account-area" id="account-area">
+          <span id="account-hint">登录可累计人气</span>
+          <a class="btn-zhihu" href="/api/oauth/start" id="login-btn"><b>知</b>知乎登录</a>
+        </div>
+      </div>
+    </header>
+
+    <div class="notice" id="notice" hidden><p id="notice-text"></p></div>
+
+    <main class="page">
+      <!-- 双模式入口 -->
+      <div id="view-entry">
+        <section class="hero">
+          <h1>开麦前，<span>先试麦</span></h1>
+          <p>发布前的一次信息增量体检：已有回答覆盖了什么，你的增量在哪，评论区会怎么杠。</p>
+        </section>
+
+        <section class="modes">
+          <div class="mode-card" id="card-radar" data-mode="radar" role="button" tabindex="0">
+            <span class="mode-tag">写作前</span>
+            <h2><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="7" cy="7" r="4.5" stroke="#52525B" stroke-width="1.5"/><path d="M10.5 10.5 14 14" stroke="#52525B" stroke-width="1.5" stroke-linecap="round"/></svg>选题雷达</h2>
+            <p class="mode-sub">看看这个问题还缺不缺好回答</p>
+            <label class="field">
+              <span class="field-label">问题标题或链接</span>
+              <input id="radar-question" type="text" maxlength="300" placeholder="如：机器学习该怎么入门？" autocomplete="off" />
+            </label>
+            <div class="actions">
+              <button class="btn primary" id="radar-start">扫描论点版图</button>
+              <span class="hint">约 1 分钟</span>
+            </div>
+          </div>
+
+          <div class="mode-card" id="card-review" data-mode="review" role="button" tabindex="0">
+            <span class="mode-tag">发布前</span>
+            <h2><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="5" y="1.5" width="6" height="8" rx="3" stroke="#056DE8" stroke-width="1.5"/><path d="M3 7.5a5 5 0 0 0 10 0M8 12.5V15" stroke="#056DE8" stroke-width="1.5" stroke-linecap="round"/></svg>开麦评审</h2>
+            <p class="mode-sub">草稿贴进来，跑一次完整评审</p>
+            <label class="field">
+              <span class="field-label">问题标题或链接（选填，帮助定位）</span>
+              <input id="review-question" type="text" maxlength="300" placeholder="如：机器学习该怎么入门？" autocomplete="off" />
+            </label>
+            <label class="field">
+              <span class="field-label">你的草稿</span>
+              <textarea id="review-draft" rows="7" maxlength="20000" placeholder="粘贴草稿全文…"></textarea>
+            </label>
+            <p class="privacy">
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><rect x="2" y="5" width="8" height="5.5" rx="1" stroke="#8E8E96" stroke-width="1.2"/><path d="M4 5V3.8a2 2 0 0 1 4 0V5" stroke="#8E8E96" stroke-width="1.2"/></svg>
+              草稿仅存本次浏览器会话，服务器不留存
+            </p>
+            <div class="actions">
+              <button class="btn primary" id="review-start">开始试麦</button>
+              <span class="hint">约 1-2 分钟 · 6 次检索</span>
+            </div>
+          </div>
+        </section>
+
+        <section class="hot" id="hot" hidden>
+          <div class="hot-head">
+            <span>从热榜选一个试试</span>
+            <button class="hot-refresh" id="hot-refresh" type="button">换一批</button>
+          </div>
+          <div class="hot-list" id="hot-list"></div>
+        </section>
+      </div>
+
+      <!-- 研究台 -->
+      <section class="desk" id="desk" hidden>
+        <div class="desk-head">
+          <div class="desk-head-left">
+            <h2>研究台</h2>
+            <span class="desk-q" id="desk-q"></span>
+          </div>
+          <div class="desk-meta">
+            <span class="pill" id="budget-pill">工具 <b id="budget-used">0</b>/6</span>
+            <span class="state-pill running" id="desk-state"><span class="pulse-dot"></span><span id="desk-state-text">分析中</span></span>
+          </div>
+        </div>
+        <div class="desk-body">
+          <div class="feed" id="feed"></div>
+          <aside class="desk-side">
+            <div>
+              <h3>证据充分度</h3>
+              <div class="gauge-row"><b id="gauge-label">准备中</b><span id="gauge-pct">0%</span></div>
+              <div class="bar"><i id="gauge-bar" style="width:0%"></i></div>
+            </div>
+            <div>
+              <h3>工具预算</h3>
+              <div class="seg" id="budget-seg"><i></i><i></i><i></i><i></i><i></i><i></i></div>
+            </div>
+            <div>
+              <h3>证据流</h3>
+              <div class="evidence-stream" id="evidence-stream"></div>
+            </div>
+            <div class="legend"><b>证据等级</b>　L1 标杆序 · L2 富字段检索<br />L3 真实评论 · L4 AI 转述（末级）</div>
+          </aside>
+        </div>
+        <div class="desk-foot">
+          <span class="trace" id="desk-trace"></span>
+          <span class="queue-note" id="queue-note" hidden></span>
+          <span class="resume" id="resume-note">✓ 断线已续传，任务未重跑</span>
+        </div>
       </section>
-      <section class="account">
-        <div class="account-title"><span>账号授权状态</span><b id="status">检查中</b></div>
-        <div class="identity"><div id="avatar-placeholder">知</div><img id="avatar" alt="知乎头像" hidden /><div><strong id="name">尚未连接知乎账号</strong><p id="headline">完成授权后显示公开账号信息</p></div></div>
-        <div class="meta"><span>App ID：<b id="app-id">-</b></span><span id="redirect-uri">-</span></div>
-        <p class="message" id="message"></p>
-        <pre class="debug" id="debug" hidden></pre>
-        <div class="actions"><button id="login">授权知乎账号</button><button class="secondary" id="refresh" hidden>重新请求用户数据</button><button class="secondary danger" id="logout" hidden>退出本次授权</button></div>
+
+      <!-- 战报卡 -->
+      <section class="report" id="report" hidden>
+        <div class="report-card">
+          <div class="report-head">
+            <div class="report-top">
+              <div class="rating-stamp"><span class="grade" id="r-grade">–</span><span class="cap">增量评级</span></div>
+              <div class="report-title">
+                <h2 id="r-title">–</h2>
+                <p id="r-scale">–</p>
+                <div class="verdict" id="r-verdict" hidden></div>
+              </div>
+            </div>
+            <div class="radar-bars" id="r-bars"></div>
+          </div>
+
+          <div class="report-sec">
+            <h3><span class="no">1</span>覆盖分析</h3>
+            <p class="sub">这个问题的论点版图——已有回答写到哪了</p>
+            <div class="arg-map" id="r-argmap"></div>
+            <div class="map-legend">
+              <span class="l1"><i></i>已被覆盖</span>
+              <span class="l2"><i></i>你的独有</span>
+              <span class="l3"><i></i>相邻空白</span>
+              <span class="tip">地块角标 = 证据等级</span>
+            </div>
+            <div class="evidence-cols">
+              <div class="evidence-col">
+                <h4>标杆序（社区共识排序）<span class="cnt" id="r-bm-count"></span></h4>
+                <ul id="r-benchmarks"></ul>
+              </div>
+              <div class="evidence-col">
+                <h4>近期讨论<span class="cnt" id="r-recent-count"></span></h4>
+                <ul id="r-recent"></ul>
+              </div>
+            </div>
+          </div>
+
+          <div class="report-sec">
+            <h3><span class="no">2</span>增量定位</h3>
+            <p class="sub">你的增量在哪，怎么放大</p>
+            <div class="inc-list" id="r-increment"></div>
+          </div>
+
+          <div class="report-sec">
+            <h3><span class="no">3</span>争议预演</h3>
+            <p class="sub">评论区最可能的杠法，与应对</p>
+            <div id="r-controversy"></div>
+          </div>
+
+          <div class="report-foot">
+            <div class="trace" id="r-trace"></div>
+            <div class="report-actions">
+              <button class="btn ghost small" id="copy-link" type="button">复制链接</button>
+              <button class="btn ghost small" id="restart" type="button">再试一次</button>
+            </div>
+          </div>
+        </div>
       </section>
-      <aside>本地地址只能预览页面，无法完成知乎登录。请先部署到 Cloudflare、Sealos 等平台，再使用公网地址测试。</aside>
-      <section id="results" hidden><div class="results-title"><h2>OAuth 用户接口</h2><span id="summary">等待请求</span></div><div class="grid" id="grid"></div></section>
     </main>
+
+    <footer class="site-foot">试麦员 Soundcheck · 知乎黑客松 2026 · 证据四层链：标杆序 L1 / 定向补强 L2 / 真实评论 L3 / AI 转述 L4</footer>
+
     <script type="module" src="/app.js"></script>
   </body>
 </html>

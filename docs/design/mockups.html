@@ -1,0 +1,445 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>试麦员 Soundcheck · UI 设计稿 v1.0</title>
+<style>
+  body{margin:0;background:#EEF0F3;font-family:"PingFang SC","Microsoft YaHei",sans-serif;padding:32px 16px 64px;}
+  .doc{max-width:820px;margin:0 auto;}
+  .doc > h1{font-size:20px;color:#18181B;margin:0 0 6px;}
+  .doc > p{font-size:13px;color:#52525B;margin:0 0 28px;}
+  .sheet{margin-bottom:56px;}
+  .sheet > h2{font-size:15px;color:#18181B;margin:0 0 4px;}
+  .sheet > p{font-size:12.5px;color:#8E8E96;margin:0 0 14px;}
+</style>
+</head>
+<body>
+<div class="doc">
+<h1>试麦员 Soundcheck · UI 设计稿 v1.0（2026-09-13）</h1>
+<p>配套规范：../UI设计规范_v1.md（批注讲解层已并入规范文档，此处为净稿）</p>
+
+<div class="sheet">
+<h2>稿 1 · 双模式入口（首页）</h2>
+<p>克制品牌区 / 描边式选中态 / 隐私承诺贴近按钮 / 热榜零门槛入口</p>
+<style>
+.sc-frame{background:#FAFAFB;border:1px solid #E4E6EB;border-radius:16px;font-family:"PingFang SC","Microsoft YaHei","Helvetica Neue",Arial,sans-serif;color:#18181B;overflow:hidden;}
+.sc-topbar{display:flex;align-items:center;justify-content:space-between;padding:14px 24px;border-bottom:1px solid #EEF0F3;background:#FFFFFF;}
+.sc-brand{display:flex;align-items:center;gap:10px;}
+.sc-mark{width:26px;height:26px;border:1.5px solid #18181B;border-radius:8px;display:grid;place-items:center;}
+.sc-mark i{display:block;width:12px;height:12px;border-radius:50%;background:radial-gradient(circle at 50% 50%, #18181B 0 4px, transparent 4.5px);position:relative;}
+.sc-mark i::after{content:"";position:absolute;left:50%;top:50%;width:12px;height:1.5px;background:#18181B;transform:translate(-50%,-50%) rotate(90deg);}
+.sc-name{font-weight:600;font-size:15px;letter-spacing:.02em;}
+.sc-name em{font-style:normal;color:#8E8E96;font-weight:400;font-size:12px;margin-left:8px;letter-spacing:.06em;}
+.sc-zhihu{font-size:12px;color:#8E8E96;display:flex;align-items:center;gap:6px;}
+.sc-zhihu b{width:16px;height:16px;border-radius:4px;background:#056DE8;color:#fff;display:grid;place-items:center;font-size:11px;font-weight:700;}
+.sc-hero{padding:36px 24px 8px;}
+.sc-hero h1{font-size:24px;line-height:1.35;margin:0 0 8px;font-weight:600;}
+.sc-hero h1 span{color:#056DE8;}
+.sc-hero p{margin:0;font-size:14px;line-height:22px;color:#52525B;max-width:520px;}
+.sc-modes{display:grid;grid-template-columns:1fr 1fr;gap:16px;padding:24px;}
+.sc-mode{background:#FFFFFF;border:1px solid #E4E6EB;border-radius:12px;padding:20px;position:relative;}
+.sc-mode.active{border-color:#056DE8;box-shadow:0 0 0 1px #056DE8 inset;}
+.sc-mode-tag{position:absolute;top:16px;right:16px;font-size:12px;color:#8E8E96;border:1px solid #EEF0F3;padding:2px 8px;border-radius:999px;}
+.sc-mode.active .sc-mode-tag{color:#056DE8;border-color:#BFD7F6;background:#EAF2FD;}
+.sc-mode h2{font-size:16px;line-height:24px;margin:0 0 4px;font-weight:600;display:flex;align-items:center;gap:8px;}
+.sc-mode-sub{font-size:12px;color:#8E8E96;margin:0 0 16px;}
+.sc-field{margin-bottom:12px;}
+.sc-field .box{border:1px solid #E4E6EB;border-radius:8px;padding:10px 12px;font-size:14px;color:#8E8E96;background:#FAFAFB;min-height:20px;}
+.sc-field .box.tall{height:88px;line-height:20px;}
+.sc-privacy{display:flex;gap:6px;align-items:flex-start;font-size:12px;color:#8E8E96;margin:4px 0 14px;line-height:18px;}
+.sc-privacy svg{flex:none;margin-top:2px;}
+.sc-btn{height:36px;padding:0 18px;border-radius:8px;font-size:14px;font-weight:500;border:1px solid transparent;display:inline-flex;align-items:center;gap:6px;}
+.sc-btn.primary{background:#056DE8;color:#FFFFFF;}
+.sc-hint{font-size:12px;color:#8E8E96;margin-left:10px;}
+.sc-hot{border-top:1px solid #EEF0F3;padding:16px 24px 22px;}
+.sc-hot-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;}
+.sc-hot-head span{font-size:12px;color:#8E8E96;}
+.sc-hot-head b{font-size:12px;color:#056DE8;font-weight:500;display:flex;align-items:center;gap:4px;}
+.sc-hot-list{display:flex;flex-direction:column;}
+.sc-hot-item{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px dashed #EEF0F3;font-size:13.5px;}
+.sc-hot-item:last-child{border-bottom:none;}
+.sc-hot-item .n{width:18px;text-align:center;font-family:"SF Mono",Consolas,monospace;font-size:12px;color:#8E8E96;flex:none;}
+.sc-hot-item:nth-child(-n+3) .n{color:#056DE8;font-weight:600;}
+.sc-hot-item .go{margin-left:auto;font-size:12px;color:#8E8E96;flex:none;}
+@media (max-width:640px){.sc-modes{grid-template-columns:1fr;}}
+</style>
+<div class="sc-frame">
+  <div class="sc-topbar">
+    <div class="sc-brand"><div class="sc-mark"><i></i></div><div class="sc-name">试麦员<em>Soundcheck</em></div></div>
+    <div class="sc-zhihu"><b>知</b>知乎登录</div>
+  </div>
+  <div class="sc-hero">
+    <h1>开麦前，<span>先试麦</span></h1>
+    <p>发布前的一次信息增量体检：已有回答覆盖了什么，你的增量在哪，评论区会怎么杠。</p>
+  </div>
+  <div class="sc-modes">
+    <div class="sc-mode">
+      <span class="sc-mode-tag">写作前</span>
+      <h2>选题雷达</h2>
+      <p class="sc-mode-sub">看看这个问题还缺不缺好回答</p>
+      <div class="sc-field"><div class="box">问题标题或链接，如：机器学习该怎么入门？</div></div>
+      <button class="sc-btn primary">扫描论点版图</button><span class="sc-hint">约 1 分钟</span>
+    </div>
+    <div class="sc-mode active">
+      <span class="sc-mode-tag">发布前</span>
+      <h2>开麦评审</h2>
+      <p class="sc-mode-sub">草稿贴进来，跑一次完整评审</p>
+      <div class="sc-field"><div class="box">问题标题（选填）</div></div>
+      <div class="sc-field"><div class="box tall">粘贴草稿全文…</div></div>
+      <p class="sc-privacy"><svg width="12" height="12" viewBox="0 0 12 12" fill="none"><rect x="2" y="5" width="8" height="5.5" rx="1" stroke="#8E8E96" stroke-width="1.2"/><path d="M4 5V3.8a2 2 0 0 1 4 0V5" stroke="#8E8E96" stroke-width="1.2"/></svg>草稿仅存本次浏览器会话，服务器不留存</p>
+      <button class="sc-btn primary">开始试麦</button><span class="sc-hint">约 1-2 分钟 · 6 次检索</span>
+    </div>
+  </div>
+  <div class="sc-hot">
+    <div class="sc-hot-head"><span>从热榜选一个试试</span><b>换一批</b></div>
+    <div class="sc-hot-list">
+      <div class="sc-hot-item"><span class="n">1</span><span class="t">AI 时代还需要学编程吗？</span><span class="go">选题雷达 →</span></div>
+      <div class="sc-hot-item"><span class="n">2</span><span class="t">2026 应届生求职风向有哪些变化？</span><span class="go">选题雷达 →</span></div>
+      <div class="sc-hot-item"><span class="n">3</span><span class="t">如何评价最新的大模型价格战？</span><span class="go">选题雷达 →</span></div>
+      <div class="sc-hot-item"><span class="n">4</span><span class="t">独居青年如何建立生活秩序感？</span><span class="go">选题雷达 →</span></div>
+    </div>
+  </div>
+</div>
+</div>
+
+<div class="sheet">
+<h2>稿 2 · 研究台（SSE 过程流）</h2>
+<p>左时间线步骤流 + 右侧证据/预算栏 + 底部诚实状态条</p>
+<style>
+.rd-frame{background:#FAFAFB;border:1px solid #E4E6EB;border-radius:16px;font-family:"PingFang SC","Microsoft YaHei",Arial,sans-serif;color:#18181B;overflow:hidden;}
+.rd-head{background:#FFFFFF;border-bottom:1px solid #EEF0F3;padding:14px 24px;display:flex;align-items:center;justify-content:space-between;gap:12px;}
+.rd-head-left{display:flex;align-items:center;gap:10px;min-width:0;}
+.rd-head h2{font-size:15px;font-weight:600;margin:0;white-space:nowrap;}
+.rd-q{font-size:12px;color:#8E8E96;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.rd-meta{display:flex;align-items:center;gap:8px;flex:none;}
+.rd-pill{font-size:12px;padding:3px 10px;border-radius:999px;border:1px solid #E4E6EB;color:#52525B;background:#FAFAFB;font-family:"SF Mono",Consolas,monospace;}
+.rd-pill b{font-weight:600;color:#18181B;}
+.rd-state{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:#056DE8;background:#EAF2FD;border:1px solid #BFD7F6;padding:3px 10px;border-radius:999px;}
+.rd-dot{width:6px;height:6px;border-radius:50%;background:#056DE8;}
+@media (prefers-reduced-motion: no-preference){.rd-dot{animation:rd-pulse 1.6s ease-in-out infinite;}.rd-step.run .rd-ico::after{animation:rd-pulse 1.4s ease-in-out infinite;}}
+@keyframes rd-pulse{0%,100%{box-shadow:0 0 0 0 rgba(5,109,232,.35);}50%{box-shadow:0 0 0 5px rgba(5,109,232,0);}}
+.rd-body{display:grid;grid-template-columns:1fr 236px;min-height:420px;}
+.rd-feed{padding:20px 24px;position:relative;}
+.rd-feed::before{content:"";position:absolute;left:31px;top:28px;bottom:28px;width:1px;background:#E4E6EB;}
+.rd-step{display:flex;gap:14px;padding:7px 0;position:relative;}
+.rd-ico{width:16px;height:16px;border-radius:50%;flex:none;margin-top:3px;background:#FFFFFF;position:relative;z-index:1;display:grid;place-items:center;border:1.5px solid #E4E6EB;}
+.rd-step.done .rd-ico{border-color:#18794E;background:#EAF6EF;}
+.rd-step.done .rd-ico::after{content:"";width:8px;height:5px;border-left:1.6px solid #18794E;border-bottom:1.6px solid #18794E;transform:rotate(-45deg) translateY(-.5px);}
+.rd-step.run .rd-ico{border-color:#056DE8;}
+.rd-step.run .rd-ico::after{content:"";width:6px;height:6px;border-radius:50%;background:#056DE8;}
+.rd-step.idle{opacity:.45;}
+.rd-main{min-width:0;}
+.rd-title{font-size:14px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+.rd-title .t{font-weight:500;}
+.rd-title .sub{font-family:"SF Mono",Consolas,monospace;font-size:12px;color:#8E8E96;}
+.rd-detail{font-size:12px;color:#52525B;margin-top:2px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
+.rd-kw{font-family:"SF Mono",Consolas,monospace;font-size:12px;background:#FAFAFB;border:1px solid #EEF0F3;padding:1px 7px;border-radius:5px;color:#52525B;}
+.rd-chip-mini{display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:1px 8px;border-radius:999px;background:#EAF2FD;color:#056DE8;border:1px solid #BFD7F6;}
+.rd-chip-mini.bm{background:#FAFAFB;color:#52525B;border-color:#E4E6EB;}
+.rd-chip-mini.warn{background:#FEF4E2;color:#B45309;border-color:#F0DDB8;}
+.rd-side{border-left:1px solid #EEF0F3;background:#FFFFFF;padding:18px;display:flex;flex-direction:column;gap:16px;}
+.rd-side h3{font-size:12px;color:#8E8E96;font-weight:500;margin:0 0 8px;letter-spacing:.04em;}
+.rd-gauge-row{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px;}
+.rd-gauge-row b{font-size:13px;font-weight:600;}
+.rd-gauge-row span{font-size:11px;color:#8E8E96;font-family:"SF Mono",Consolas,monospace;}
+.rd-bar{height:6px;border-radius:3px;background:#EEF0F3;overflow:hidden;}
+.rd-bar i{display:block;height:100%;border-radius:3px;background:#056DE8;width:67%;}
+.rd-seg{display:flex;gap:3px;}
+.rd-seg i{flex:1;height:6px;border-radius:2px;background:#EEF0F3;}
+.rd-seg i.on.spent{background:#056DE8;}
+.rd-evi{display:flex;flex-direction:column;gap:6px;}
+.rd-evi .evi-chip{font-size:11.5px;border:1px solid #E4E6EB;border-radius:8px;padding:5px 8px;color:#52525B;background:#FAFAFB;display:flex;gap:6px;align-items:center;line-height:1.45;}
+.rd-evi .evi-chip b{font-family:"SF Mono",Consolas,monospace;font-weight:600;color:#18181B;flex:none;}
+.rd-evi .evi-chip.benchmark{border-style:dashed;}
+.rd-legend{font-size:11px;color:#8E8E96;line-height:1.7;border-top:1px dashed #EEF0F3;padding-top:10px;margin-top:auto;}
+.rd-legend b{font-weight:600;color:#52525B;}
+.rd-foot{border-top:1px solid #EEF0F3;background:#FFFFFF;padding:10px 24px;display:flex;justify-content:space-between;align-items:center;}
+.rd-foot span{font-size:12px;color:#8E8E96;font-family:"SF Mono",Consolas,monospace;}
+.rd-foot .resume{color:#18794E;display:flex;align-items:center;gap:5px;font-family:"PingFang SC","Microsoft YaHei",sans-serif;}
+@media (max-width:640px){.rd-body{grid-template-columns:1fr;}}
+</style>
+<div class="rd-frame">
+  <div class="rd-head">
+    <div class="rd-head-left"><h2>研究台</h2><span class="rd-q">机器学习该怎么入门？</span></div>
+    <div class="rd-meta"><span class="rd-pill">工具 <b>4/6</b></span><span class="rd-state"><span class="rd-dot"></span>分析中</span></div>
+  </div>
+  <div class="rd-body">
+    <div class="rd-feed">
+      <div class="rd-step done"><span class="rd-ico"></span><div class="rd-main"><div class="rd-title"><span class="t">解析输入</span><span class="sub">0.8s</span></div><div class="rd-detail">提炼 4 个论点 · 首发检索词 3 组</div></div></div>
+      <div class="rd-step done"><span class="rd-ico"></span><div class="rd-main"><div class="rd-title"><span class="t">检索 ①</span><span class="rd-kw">机器学习 入门</span><span class="sub">0.7s</span></div><div class="rd-detail">采纳 10 条<span class="rd-chip-mini">88 赞 · L4</span><span class="rd-chip-mini">22 赞 · L3</span><span class="rd-chip-mini warn">3 条带真实评论</span></div></div></div>
+      <div class="rd-step done"><span class="rd-ico"></span><div class="rd-main"><div class="rd-title"><span class="t">拉取标杆序</span><span class="sub">question_answers · 0.5s</span></div><div class="rd-detail">社区序前 20 条到位<span class="rd-chip-mini bm">标杆 L1</span></div></div></div>
+      <div class="rd-step done"><span class="rd-ico"></span><div class="rd-main"><div class="rd-title"><span class="t">检索 ② L2 补强</span><span class="rd-kw">数学基础 机器学习</span><span class="sub">0.7s · 缓存命中</span></div><div class="rd-detail">验证标杆论点覆盖深度 · 采纳 10 条</div></div></div>
+      <div class="rd-step run"><span class="rd-ico"></span><div class="rd-main"><div class="rd-title"><span class="t">争议预演</span><span class="sub">基于真实评论模式推导</span></div><div class="rd-detail">杠精视角：正在匹配反驳模式…</div></div></div>
+      <div class="rd-step idle"><span class="rd-ico"></span><div class="rd-main"><div class="rd-title"><span class="t">生成报告</span></div></div></div>
+    </div>
+    <aside class="rd-side">
+      <div><h3>证据充分度</h3><div class="rd-gauge-row"><b>足够收尾</b><span>4 层证据 · 67%</span></div><div class="rd-bar"><i></i></div></div>
+      <div><h3>工具预算</h3><div class="rd-seg"><i class="on spent"></i><i class="on spent"></i><i class="on spent"></i><i class="on spent"></i><i></i><i></i></div></div>
+      <div><h3>证据流</h3><div class="rd-evi">
+        <div class="evi-chip"><b>88赞</b>L4 · 林轩田课程笔记</div>
+        <div class="evi-chip"><b>22赞</b>L3 · 时光纪</div>
+        <div class="evi-chip benchmark"><b>#1</b>社区序 · 53910077</div>
+        <div class="evi-chip benchmark"><b>#2</b>社区序 · 22465357</div>
+        <div class="evi-chip"><b>15赞</b>L4 · 数据说</div>
+      </div></div>
+      <div class="rd-legend"><b>证据等级</b>　L1 标杆序 · L2 富字段检索<br/>L3 真实评论 · L4 AI 转述（末级）</div>
+    </aside>
+  </div>
+  <div class="rd-foot">
+    <span>run_id a3f9…c21 · 事件 seq 17</span>
+    <span class="resume">✓ 断线已续传，任务未重跑</span>
+  </div>
+</div>
+</div>
+
+<div class="sheet">
+<h2>稿 3 · 开麦战报卡（核心输出物）</h2>
+<p>评级章 / 四维数值条（启发式斜纹标注）/ 增量地图三色地块 / 争议预演配对行</p>
+<style>
+.br-frame{background:#FAFAFB;border:1px solid #E4E6EB;border-radius:16px;font-family:"PingFang SC","Microsoft YaHei",Arial,sans-serif;color:#18181B;overflow:hidden;}
+.br-head{background:#FFFFFF;border-bottom:1px solid #EEF0F3;padding:20px 24px;}
+.br-top{display:flex;gap:20px;align-items:flex-start;}
+.br-rating{flex:none;width:72px;height:72px;border-radius:14px;border:1.5px solid #056DE8;background:#EAF2FD;display:flex;flex-direction:column;align-items:center;justify-content:center;}
+.br-rating .grade{font-family:Georgia,"Times New Roman",serif;font-size:34px;font-weight:700;color:#056DE8;line-height:1;}
+.br-rating .cap{font-size:10px;color:#056DE8;letter-spacing:.08em;margin-top:3px;}
+.br-title{min-width:0;flex:1;}
+.br-title h2{font-size:17px;font-weight:600;margin:0 0 4px;line-height:1.4;}
+.br-title p{margin:0;font-size:12.5px;color:#52525B;}
+.br-title p b{color:#18181B;font-weight:600;}
+.br-verdict{margin-top:8px;font-size:12.5px;color:#52525B;background:#FAFAFB;border:1px solid #EEF0F3;border-radius:8px;padding:6px 10px;display:inline-block;}
+.br-verdict b{color:#056DE8;font-weight:600;}
+.br-bars{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-top:18px;}
+.br-bar .lab{display:flex;justify-content:space-between;align-items:baseline;font-size:12px;color:#52525B;margin-bottom:4px;}
+.br-bar .lab b{font-family:"SF Mono",Consolas,monospace;font-weight:600;color:#18181B;}
+.br-bar .lab .est{font-size:10px;color:#8E8E96;font-style:normal;}
+.br-bar .track{height:6px;background:#EEF0F3;border-radius:3px;overflow:hidden;}
+.br-bar .track i{display:block;height:100%;background:#056DE8;border-radius:3px;}
+.br-bar .track i.est{background:repeating-linear-gradient(45deg,#056DE8 0 3px,rgba(5,109,232,.45) 3px 6px);}
+.br-sec{padding:20px 24px;border-bottom:1px solid #EEF0F3;background:#FFFFFF;}
+.br-sec h3{font-size:14.5px;font-weight:600;margin:0 0 3px;display:flex;align-items:center;gap:8px;}
+.br-sec h3 .no{width:18px;height:18px;border-radius:5px;background:#18181B;color:#fff;font-size:11px;display:grid;place-items:center;font-family:"SF Mono",Consolas,monospace;font-weight:600;}
+.br-sec .sub{font-size:12px;color:#8E8E96;margin:0 0 14px 26px;}
+.br-map{display:flex;height:34px;border-radius:8px;overflow:hidden;border:1px solid #E4E6EB;}
+.br-plot{flex:1;display:flex;flex-direction:column;justify-content:center;padding:0 10px;border-right:1px solid #FFFFFF;position:relative;min-width:0;}
+.br-plot:last-child{border-right:none;}
+.br-plot.cov{background:#EEF0F3;}
+.br-plot.uniq{background:#EAF2FD;border-left:2px solid #056DE8;border-right:2px solid #056DE8;}
+.br-plot.blank{background:repeating-linear-gradient(45deg,#F4F5F7 0 6px,#FAFBFC 6px 12px);border-top:1.5px dashed #8E8E96;border-bottom:1.5px dashed #8E8E96;}
+.br-plot .p-t{font-size:11.5px;color:#18181B;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.br-plot .p-e{position:absolute;top:2px;right:4px;font-size:9px;font-family:"SF Mono",Consolas,monospace;color:#8E8E96;background:rgba(255,255,255,.75);padding:0 3px;border-radius:3px;}
+.br-map-legend{display:flex;gap:16px;margin-top:8px;font-size:11.5px;color:#52525B;align-items:center;flex-wrap:wrap;}
+.br-map-legend i{width:10px;height:10px;border-radius:3px;display:inline-block;margin-right:5px;vertical-align:-1px;}
+.br-map-legend .l1 i{background:#EEF0F3;border:1px solid #E4E6EB;}
+.br-map-legend .l2 i{background:#EAF2FD;border:1.5px solid #056DE8;}
+.br-map-legend .l3 i{background:repeating-linear-gradient(45deg,#F4F5F7 0 3px,#fff 3px 6px);border:1px dashed #8E8E96;}
+.br-map-legend .tip{margin-left:auto;color:#8E8E96;font-size:11px;}
+.br-inc{display:flex;flex-direction:column;gap:10px;}
+.br-inc-row{display:flex;gap:10px;align-items:flex-start;font-size:13px;line-height:1.6;}
+.br-inc-row .tag{flex:none;font-size:11px;font-weight:600;padding:2px 8px;border-radius:5px;margin-top:1px;white-space:nowrap;}
+.br-inc-row .tag.cov{background:#EEF0F3;color:#52525B;}
+.br-inc-row .tag.uniq{background:#056DE8;color:#fff;}
+.br-inc-row .tag.blank{background:transparent;color:#52525B;border:1px dashed #8E8E96;}
+.br-inc-row .tag.act{background:#EAF6EF;color:#18794E;border:1px solid #BFE3CF;}
+.br-cto-row{border:1px solid #E4E6EB;border-radius:8px;padding:10px 12px;margin-bottom:8px;display:grid;grid-template-columns:1fr 24px 1fr;gap:8px;align-items:start;}
+.br-cto .side-l{font-size:12.5px;color:#18181B;line-height:1.55;}
+.br-cto .side-l::before{content:"杠";display:inline-grid;place-items:center;width:16px;height:16px;border-radius:4px;background:#FCEEEE;color:#C03744;font-size:10px;font-weight:700;margin-right:6px;vertical-align:1px;}
+.br-cto .side-r{font-size:12.5px;color:#52525B;line-height:1.55;}
+.br-cto .side-r::before{content:"应";display:inline-grid;place-items:center;width:16px;height:16px;border-radius:4px;background:#EAF6EF;color:#18794E;font-size:10px;font-weight:700;margin-right:6px;vertical-align:1px;}
+.br-cto .arrow{display:grid;place-items:center;color:#8E8E96;padding-top:2px;}
+.br-cto .src{grid-column:1/-1;font-size:11px;color:#8E8E96;display:flex;align-items:center;gap:5px;margin-top:2px;}
+.br-badge{font-size:10px;font-family:"SF Mono",Consolas,monospace;padding:1px 6px;border-radius:4px;flex:none;}
+.br-badge.real{background:#EAF6EF;color:#18794E;}
+.br-badge.infer{background:#FEF4E2;color:#B45309;}
+.br-foot{padding:14px 24px;background:#FAFAFB;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;}
+.br-foot .trace{font-size:11px;color:#8E8E96;font-family:"SF Mono",Consolas,monospace;line-height:1.6;}
+.br-actions{display:flex;gap:8px;}
+.br-btn{height:32px;padding:0 14px;border-radius:8px;font-size:12.5px;font-weight:500;display:inline-flex;align-items:center;gap:6px;border:1px solid #E4E6EB;background:#FFFFFF;color:#18181B;}
+.br-btn.primary{background:#056DE8;border-color:#056DE8;color:#fff;}
+@media (max-width:640px){.br-bars{grid-template-columns:1fr 1fr;}.br-cto-row{grid-template-columns:1fr;}.br-cto .arrow{transform:rotate(90deg);}}
+</style>
+<div class="br-frame">
+  <div class="br-head">
+    <div class="br-top">
+      <div class="br-rating"><span class="grade">B</span><span class="cap">增量评级</span></div>
+      <div class="br-title">
+        <h2>机器学习该怎么入门？</h2>
+        <p>对比 <b>20 条标杆回答</b>（社区序）+ <b>20 条近期讨论</b> · 证据 L1×3 L2×4 L3×2</p>
+        <div class="br-verdict">结论：草稿 4 个论点中 <b>1 个独有</b>、2 个已被覆盖、1 个方向无人写透——值得发，但要换打法。</div>
+      </div>
+    </div>
+    <div class="br-bars">
+      <div class="br-bar"><div class="lab"><span>新颖度</span><b>6</b></div><div class="track"><i style="width:60%"></i></div></div>
+      <div class="br-bar"><div class="lab"><span>严谨度</span><b>7</b></div><div class="track"><i style="width:70%"></i></div></div>
+      <div class="br-bar"><div class="lab"><span>经验密度 <i class="est">启发式</i></span><b>5</b></div><div class="track"><i class="est" style="width:50%"></i></div></div>
+      <div class="br-bar"><div class="lab"><span>共鸣度 <i class="est">启发式</i></span><b>6</b></div><div class="track"><i class="est" style="width:60%"></i></div></div>
+    </div>
+  </div>
+  <div class="br-sec">
+    <h3><span class="no">1</span>覆盖分析</h3>
+    <p class="sub">这个问题的论点版图——已有回答写到哪了</p>
+    <div class="br-map">
+      <div class="br-plot cov"><span class="p-e">L1</span><span class="p-t">先补数学基础</span></div>
+      <div class="br-plot cov"><span class="p-e">L1</span><span class="p-t">项目驱动边做边学</span></div>
+      <div class="br-plot uniq"><span class="p-e">L2</span><span class="p-t">课程+教材组合路径</span></div>
+      <div class="br-plot blank"><span class="p-e">推导</span><span class="p-t">入门常见误区</span></div>
+    </div>
+    <div class="br-map-legend">
+      <span class="l1"><i></i>已被覆盖</span><span class="l2"><i></i>你的独有</span><span class="l3"><i></i>相邻空白</span>
+      <span class="tip">地块角标 = 证据等级，点击看判断依据</span>
+    </div>
+  </div>
+  <div class="br-sec">
+    <h3><span class="no">2</span>增量定位</h3>
+    <p class="sub">你的增量在哪，怎么放大</p>
+    <div class="br-inc">
+      <div class="br-inc-row"><span class="tag cov">已覆盖</span><span>「先补数学基础」「项目驱动学习」——标杆序前两位已写透，你的版本没有新信息</span></div>
+      <div class="br-inc-row"><span class="tag uniq">独有</span><span>「课程+教材组合路径」——20 条标杆里无人系统给出组合方案，这是你真正的增量</span></div>
+      <div class="br-inc-row"><span class="tag blank">空白</span><span>「入门常见误区」——整个问题下没人写，可以新起一段直接占位</span></div>
+      <div class="br-inc-row"><span class="tag act">建议</span><span>删掉前两段的重复论证，把「组合路径」扩成主体（给出具体周期与书单），误区单独成节</span></div>
+    </div>
+  </div>
+  <div class="br-sec">
+    <h3><span class="no">3</span>争议预演</h3>
+    <p class="sub">评论区最可能的杠法，与应对</p>
+    <div class="br-cto">
+      <div class="br-cto-row">
+        <div class="side-l">数学基础根本不用先学全，你这是劝退流</div>
+        <div class="arrow">→</div>
+        <div class="side-r">承认「按需补」合理，但给出最小集合：线代+概率论就够开局</div>
+        <div class="src"><span class="br-badge real">L3 真实评论</span>同源问题 88 赞回答下的精选评论</div>
+      </div>
+      <div class="br-cto-row">
+        <div class="side-l">又是课程清单，2026 年了还看这些老课？</div>
+        <div class="arrow">→</div>
+        <div class="side-r">在文中直接回应：列出每门课的「仍值得看」理由与时效性说明</div>
+        <div class="src"><span class="br-badge infer">推导</span>基于论点推导的潜在质疑（该证据位未命中真实评论）</div>
+      </div>
+    </div>
+  </div>
+  <div class="br-foot">
+    <div class="trace">run a3f9…c21 · 6/6 次检索 · 生成于 2026-09-13 15:42<br/>判断基于检索摘要（非全文），点击论点可对照原文</div>
+    <div class="br-actions"><button class="br-btn">复制链接</button><button class="br-btn primary">生成分享海报</button></div>
+  </div>
+</div>
+</div>
+
+<div class="sheet">
+<h2>稿 4 · Design Tokens 与组件状态总表</h2>
+<p>实现唯一取值来源（与 UI设计规范_v1.md §二一致）</p>
+<style>
+.tk-frame{background:#FFFFFF;border:1px solid #E4E6EB;border-radius:16px;font-family:"PingFang SC","Microsoft YaHei",Arial,sans-serif;color:#18181B;overflow:hidden;}
+.tk-sec{padding:18px 24px;border-bottom:1px solid #EEF0F3;}
+.tk-sec:last-child{border-bottom:none;}
+.tk-sec h3{font-size:12px;font-weight:600;color:#8E8E96;letter-spacing:.08em;margin:0 0 12px;}
+.tk-swatches{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:10px;}
+.tk-sw{border:1px solid #E4E6EB;border-radius:8px;overflow:hidden;}
+.tk-sw .c{height:34px;}
+.tk-sw .m{padding:6px 8px;}
+.tk-sw .n{font-size:11.5px;font-weight:500;}
+.tk-sw .v{font-family:"SF Mono",Consolas,monospace;font-size:10.5px;color:#8E8E96;}
+.tk-grid2{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+.tk-type-row{display:flex;justify-content:space-between;align-items:baseline;padding:6px 0;border-bottom:1px dashed #EEF0F3;}
+.tk-type-row:last-child{border-bottom:none;}
+.tk-type-row .spec{font-family:"SF Mono",Consolas,monospace;font-size:11px;color:#8E8E96;text-align:right;}
+.tk-space{display:flex;align-items:flex-end;gap:12px;}
+.tk-space .cell{display:flex;flex-direction:column;gap:4px;align-items:center;}
+.tk-space .cell i{display:block;background:#EAF2FD;border:1px solid #BFD7F6;border-radius:3px;}
+.tk-space .cell span{font-family:"SF Mono",Consolas,monospace;font-size:10.5px;color:#8E8E96;}
+.tk-radius-row{display:flex;gap:14px;align-items:center;flex-wrap:wrap;}
+.tk-radius-row .r{border:1.5px solid #056DE8;background:#EAF2FD;width:44px;height:32px;}
+.tk-radius-row span{font-family:"SF Mono",Consolas,monospace;font-size:11px;color:#8E8E96;}
+.tk-states{display:flex;flex-direction:column;gap:10px;}
+.tk-state{display:flex;gap:10px;align-items:center;font-size:12.5px;flex-wrap:wrap;}
+.tk-state .lab{flex:none;width:64px;color:#8E8E96;font-size:11px;font-family:"SF Mono",Consolas,monospace;}
+.tk-btn{height:32px;padding:0 14px;border-radius:8px;font-size:12.5px;font-weight:500;display:inline-flex;align-items:center;border:1px solid transparent;}
+.tk-btn.primary{background:#056DE8;color:#fff;}
+.tk-btn.hover{background:#0B5FD0;color:#fff;}
+.tk-btn.disabled{background:#056DE8;color:#fff;opacity:.45;}
+.tk-btn.ghost{background:transparent;border-color:#E4E6EB;color:#52525B;}
+.tk-sel{border:1px solid #056DE8;box-shadow:0 0 0 1px #056DE8 inset;border-radius:10px;padding:8px 12px;font-size:12.5px;color:#52525B;background:#fff;}
+.tk-badge2{font-size:11px;font-family:"SF Mono",Consolas,monospace;padding:1px 6px;border-radius:4px;}
+.tk-badge2.real{background:#EAF6EF;color:#18794E;}
+.tk-badge2.infer{background:#FEF4E2;color:#B45309;}
+.tk-rules{display:grid;grid-template-columns:1fr 1fr;gap:8px 20px;font-size:12.5px;line-height:1.6;}
+.tk-rules .do,.tk-rules .dont{display:flex;gap:8px;align-items:flex-start;}
+.tk-rules .do::before{content:"✓";color:#18794E;font-weight:700;flex:none;}
+.tk-rules .dont::before{content:"×";color:#C03744;font-weight:700;flex:none;}
+.tk-rules .dont span{color:#52525B;text-decoration:line-through;text-decoration-color:rgba(192,55,68,.5);}
+@media (max-width:620px){.tk-grid2,.tk-rules{grid-template-columns:1fr;}}
+</style>
+<div class="tk-frame">
+  <div class="tk-sec">
+    <h3>色板 · COLOR</h3>
+    <div class="tk-swatches">
+      <div class="tk-sw"><div class="c" style="background:#FAFAFB;border-bottom:1px solid #EEF0F3;"></div><div class="m"><div class="n">页面底</div><div class="v">#FAFAFB</div></div></div>
+      <div class="tk-sw"><div class="c" style="background:#FFFFFF;border-bottom:1px solid #EEF0F3;"></div><div class="m"><div class="n">卡片面</div><div class="v">#FFFFFF</div></div></div>
+      <div class="tk-sw"><div class="c" style="background:#E4E6EB;"></div><div class="m"><div class="n">边框</div><div class="v">#E4E6EB</div></div></div>
+      <div class="tk-sw"><div class="c" style="background:#18181B;"></div><div class="m"><div class="n">正文</div><div class="v">#18181B</div></div></div>
+      <div class="tk-sw"><div class="c" style="background:#52525B;"></div><div class="m"><div class="n">次级文</div><div class="v">#52525B</div></div></div>
+      <div class="tk-sw"><div class="c" style="background:#8E8E96;"></div><div class="m"><div class="n">辅助文</div><div class="v">#8E8E96</div></div></div>
+      <div class="tk-sw"><div class="c" style="background:#056DE8;"></div><div class="m"><div class="n">品牌蓝</div><div class="v">#056DE8</div></div></div>
+      <div class="tk-sw"><div class="c" style="background:#EAF2FD;"></div><div class="m"><div class="n">品牌浅底</div><div class="v">#EAF2FD</div></div></div>
+      <div class="tk-sw"><div class="c" style="background:#18794E;"></div><div class="m"><div class="n">真实证据</div><div class="v">#18794E</div></div></div>
+      <div class="tk-sw"><div class="c" style="background:#B45309;"></div><div class="m"><div class="n">推导/提示</div><div class="v">#B45309</div></div></div>
+      <div class="tk-sw"><div class="c" style="background:#C03744;"></div><div class="m"><div class="n">杠/危险</div><div class="v">#C03744</div></div></div>
+    </div>
+  </div>
+  <div class="tk-sec">
+    <h3>字体 · 间距 · 圆角 · 阴影</h3>
+    <div class="tk-grid2">
+      <div>
+        <div class="tk-type-row"><span style="font-size:24px;font-weight:600;">页面主标 24</span><span class="spec">24/32 · 600</span></div>
+        <div class="tk-type-row"><span style="font-size:16px;font-weight:600;">卡片标题 16</span><span class="spec">16/24 · 600</span></div>
+        <div class="tk-type-row"><span style="font-size:14px;">正文 14</span><span class="spec">14/22 · 400</span></div>
+        <div class="tk-type-row"><span style="font-size:12px;color:#52525B;">辅助说明 12</span><span class="spec">12/18 · 400</span></div>
+        <div class="tk-type-row"><span style="font-size:12px;font-family:'SF Mono',Consolas,monospace;">数据/ID mono</span><span class="spec">SF Mono · Consolas</span></div>
+        <div class="tk-type-row"><span style="font-size:20px;font-family:Georgia,serif;font-weight:700;color:#056DE8;">B</span><span class="spec">评级 · Georgia 34px</span></div>
+      </div>
+      <div>
+        <div class="tk-space" style="margin-bottom:14px;">
+          <div class="cell"><i style="width:8px;height:8px;"></i><span>4</span></div>
+          <div class="cell"><i style="width:12px;height:12px;"></i><span>8</span></div>
+          <div class="cell"><i style="width:16px;height:16px;"></i><span>12</span></div>
+          <div class="cell"><i style="width:20px;height:20px;"></i><span>16</span></div>
+          <div class="cell"><i style="width:24px;height:24px;"></i><span>20</span></div>
+          <div class="cell"><i style="width:28px;height:28px;"></i><span>24</span></div>
+          <div class="cell"><i style="width:36px;height:36px;"></i><span>32</span></div>
+        </div>
+        <div class="tk-radius-row">
+          <div class="r" style="border-radius:8px;"></div><span>8px · 按钮/输入框</span>
+          <div class="r" style="border-radius:12px;"></div><span>12px · 卡片</span>
+          <div class="r" style="border-radius:999px;width:56px;"></div><span>999 · 胶囊</span>
+        </div>
+        <div style="margin-top:14px;font-size:12px;color:#52525B;line-height:1.7;">阴影只用一档：<span style="font-family:'SF Mono',Consolas,monospace;font-size:11px;">0 1px 2px rgba(24,26,27,.05)</span>（hover 浮起）；其余层级靠 1px 边框区分。</div>
+      </div>
+    </div>
+  </div>
+  <div class="tk-sec">
+    <h3>关键组件状态 · STATES</h3>
+    <div class="tk-states">
+      <div class="tk-state"><span class="lab">按钮</span><button class="tk-btn primary">默认</button><button class="tk-btn hover">悬停 #0B5FD0</button><button class="tk-btn disabled">禁用 45%</button><button class="tk-btn ghost">次按钮</button></div>
+      <div class="tk-state"><span class="lab">选中卡</span><div class="tk-sel">1px 品牌蓝描边 + 1px 同色内环，不填充底色</div></div>
+      <div class="tk-state"><span class="lab">证据徽标</span><span class="tk-badge2 real">L3 真实评论</span><span class="tk-badge2 infer">推导</span></div>
+    </div>
+  </div>
+  <div class="tk-sec">
+    <h3>反 AI 味守则 · RULES</h3>
+    <div class="tk-rules">
+      <div class="do">全部实色平面，圆角 ≤12px，单档浅阴影</div>
+      <div class="dont"><span>紫蓝渐变、发光描边、玻璃拟态、网格光斑背景</span></div>
+      <div class="do">一张卡片最多一个彩色焦点，其余中性灰</div>
+      <div class="dont"><span>彩虹色标签墙、每个模块一个主题色</span></div>
+      <div class="do">数字/ID/检索词用等宽字体，与正文形成质感对比</div>
+      <div class="dont"><span>Emoji 当功能图标（仅「杠/应」文字章例外）</span></div>
+      <div class="do">动效只有两种：状态脉冲点、120ms 内 hover 过渡</div>
+      <div class="dont"><span>视差滚动、入场编排动画、循环漂浮装饰</span></div>
+      <div class="do">空状态写一句人话 + 一个动作（「贴入草稿，开始试麦」）</div>
+      <div class="dont"><span>插画空状态、机器人吉祥物挥手</span></div>
+    </div>
+  </div>
+</div>
+</div>
+</div>
+</body>
+</html>
