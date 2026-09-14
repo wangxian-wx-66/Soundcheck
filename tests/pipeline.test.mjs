@@ -40,6 +40,12 @@ test('humanize: 内部字段名泄漏剥除（真 key 实测「evidence_level �
   assert.equal(humanize('The coverage of this answer is wide'), 'The coverage of this answer is wide');
 });
 
+test('humanize: 接口名泄漏剥除（真 key 实测「CommentInfoList未提供直接反驳」）', () => {
+  assert.equal(humanize('评论区相关性弱，CommentInfoList未提供直接反驳'), '评论区相关性弱，未提供直接反驳');
+  assert.equal(humanize('标杆以 question_answers 默认序为准'), '标杆以默认序为准');
+  assert.equal(humanize('通过 zhihu_search 检索到的证据'), '通过检索到的证据');
+});
+
 test('humanize: 主审管线全流程输出已过 humanize（objection 不含方括号）', async () => {
   const { pipeline } = buildStack();
   const { runId } = pipeline.start('review', { question: '机器学习该怎么入门？', draft: '入门先补数学（线性代数（矩阵论）），再上 CS229，按[数学→推导→工程]顺序。' });

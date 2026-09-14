@@ -766,7 +766,10 @@ function renderReport(runId, report) {
     }
   };
   renderLinkList(els.rBenchmarks, benchmarks, (item) => ({ text: EVIDENCE_LABEL[item.evidence_level] || item.evidence_level || '社区排序' }));
-  renderLinkList(els.rRecent, recent, (item) => ({ text: `${item.votes ?? 0}赞 ${item.authority || ''}`.trim(), l2: true }));
+  renderLinkList(els.rRecent, recent, (item) => {
+    const auth = String(item.authority || '').replace(/^L/i, '');
+    return { text: `${item.votes ?? 0}赞${auth ? ` · 权威 L${auth}` : ''}`.trim(), l2: true };
+  });
   els.rBmCount.textContent = String(benchmarks.length);
   els.rRecentCount.textContent = String(recent.length);
 

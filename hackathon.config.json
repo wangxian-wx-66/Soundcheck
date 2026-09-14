@@ -5,7 +5,7 @@
   "oauth": {
     "enabled": true,
     "appId": "399",
-    "redirectUri": null,
+    "redirectUri": "https://czhuqikmrvth.sealoshzh.site/auth/callback",
     "credentialService": "zhihu-hackathon:试麦员-soundcheck:1ac3889608",
     "credentialAccount": "oauth-app-key"
   },

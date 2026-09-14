@@ -30,6 +30,11 @@ if (process.env.SMOKE !== '1') {
   }
 }
 
+// OAuth 回调地址支持运行时环境变量覆盖（镜像内 hackathon.config.json 冻结于构建时——
+// 部署后回调变更无需重建镜像，与 Secret 注入纪律一致）；须在 createOAuth 之前生效
+if (process.env.OAUTH_REDIRECT_URI) {
+  config.oauth.redirectUri = new URL(process.env.OAUTH_REDIRECT_URI).toString().replace(/\/$/, '');
+}
 const oauth = createOAuth(config);
 const runtimeHost = process.env.HOST || (process.env.PORT ? '0.0.0.0' : config.host);
 const runtimePort = Number(process.env.PORT || config.port);

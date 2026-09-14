@@ -25,13 +25,15 @@ COPY public/ public/
 COPY scripts/ scripts/
 COPY docs/ docs/
 
-# 数据目录：Sealos 挂持久卷的位置（容器内以 node 用户运行，需可写）
-RUN mkdir -p /data && chown node:node /data
+# 数据目录：Sealos 本地存储挂载点属主为 root，容器 node 用户写不进（线上实测 CrashLoop）
+# → entrypoint 以 root 起飞 chown 后降权 node 运行（见 docker-entrypoint.sh）
+COPY docker-entrypoint.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh && mkdir -p /data && chown node:node /data
 ENV DATA_DIR=/data
 VOLUME /data
 
-# 非 root 运行
-USER node
+# root 起飞（entrypoint chown /data 后 su 降权 node 运行 server）——容器进程实际以 node 跑
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 
 # 健康检查（/api/health 无需鉴权、不消耗额度；wget 来自 alpine busybox）
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
@@ -41,4 +43,4 @@ EXPOSE 4173
 # 容器内端口固定 4173（Sealos 侧外部端口映射与此无关）；HOST 默认读 config（127.0.0.1）容器内需显式 0.0.0.0
 ENV PORT=4173 HOST=0.0.0.0
 # SMOKE/LLM_MOCK 默认不设——线上跑真实链路；mock 仅烟测时以环境变量覆盖
-CMD ["node", "--no-warnings", "server.mjs"]
+# 启动命令在 docker-entrypoint.sh 内（chown /data → su node 降权运行）
