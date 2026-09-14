@@ -692,8 +692,13 @@ function renderReport(runId, report) {
     ? 'S 很缺好回答 · A 值得写 · B 竞争偏多 · C 已被写透'
     : 'S 显著独有增量 · A 有明确增量 · B 少量增量 · C 基本被覆盖';
   els.rBarsCap.textContent = reportIsRadar ? '问题四维体检（基于社区讨论估算）' : '草稿四维体检';
-  els.rIncSub.textContent = reportIsRadar ? '这个问题还缺什么，机会在哪' : '你的增量在哪，怎么放大';
-  els.rCtrSub.textContent = reportIsRadar ? '未来答主最可能被杠的点' : '评论区最可能的杠法，与应对';
+  els.rIncSub.textContent = reportIsRadar
+    ? '主审 Agent 的判断——这个问题还缺什么，机会在哪'
+    : '主审 Agent 的判断——你的增量在哪，怎么放大';
+  // 身份引导（信息分层：区块标题说明「谁在说话」——用户无需了解双 Agent 架构也能读懂）
+  els.rCtrSub.textContent = reportIsRadar
+    ? '主审 Agent · 基于已有回答的评论区氛围，预判未来答主会被杠的点'
+    : '主审 Agent · 基于已有回答的评论区氛围，预判你会被杠的点';
   els.rTitle.textContent = r.question_title || '（未命名）';
 
   const benchmarks = r.coverage?.benchmarks || [];

@@ -387,10 +387,13 @@ a:hover { color: var(--brand); }
 .jury-chief i, .jury-cynic i { font-style: normal; font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 4px; margin-right: 6px; vertical-align: 1px; white-space: nowrap; }
 .jury-chief i { background: var(--brand-soft); color: var(--brand); }
 .jury-cynic i { background: var(--red-soft); color: var(--red); }
-.jury-nit-title { font-size: 12.5px; font-weight: 600; margin: 16px 0 10px; color: var(--text-2); }
-.jury-nit-title .cnt { font-family: var(--font-mono); font-weight: 500; color: var(--text-3); margin-left: 6px; }
+.jury-nit-title { font-size: 12.5px; font-weight: 600; margin: 16px 0 6px; color: var(--text-2); display: flex; align-items: center; gap: 6px; }
+.jury-nit-title::before { content: "杠"; display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 5px; background: var(--red); color: #fff; font-size: 11px; font-weight: 700; }
+.jury-nit-title .cnt { font-family: var(--font-mono); font-weight: 500; color: var(--text-3); margin-left: 2px; }
+/* 身份引导 + 视觉区隔：杠精找茬是「针对你的攻击」（红左边界），争议预演是「社区氛围预判」（默认边） */
+.jury-nit-sub { margin-bottom: 10px; }
 .nit-list { display: flex; flex-direction: column; gap: 8px; }
-.nit-row { border: 1px solid var(--red-line); border-radius: var(--radius-sm); padding: 9px 12px; background: #FDF9FA; }
+.nit-row { border: 1px solid var(--red-line); border-left: 3px solid var(--red); border-radius: var(--radius-sm); padding: 9px 12px; background: #FDF9FA; }
 .nit-head { display: flex; align-items: baseline; gap: 8px; }
 .nit-head b { font-size: 12.5px; color: var(--text); line-height: 1.5; }
 .nit-head .badge-evi { margin-left: auto; flex: none; }

@@ -32,6 +32,14 @@ test('humanize: 正常文本零改动（含单层括号）', () => {
   assert.equal(humanize('  多余  空白  '), '多余 空白');
 });
 
+test('humanize: 内部字段名泄漏剥除（真 key 实测「evidence_level 给到 L1」）', () => {
+  assert.equal(humanize('evidence_level 给到 L1'), '给到 L1');
+  assert.equal(humanize('这条 unique 算增量'), '这条算增量');
+  assert.equal(humanize('我 own_rating 评 C'), '我评 C');
+  // 正常英文文本不受影响（无中文动词语境跟随）
+  assert.equal(humanize('The coverage of this answer is wide'), 'The coverage of this answer is wide');
+});
+
 test('humanize: 主审管线全流程输出已过 humanize（objection 不含方括号）', async () => {
   const { pipeline } = buildStack();
   const { runId } = pipeline.start('review', { question: '机器学习该怎么入门？', draft: '入门先补数学（线性代数（矩阵论）），再上 CS229，按[数学→推导→工程]顺序。' });
