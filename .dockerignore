@@ -1,0 +1,28 @@
+# 安全闸门：以下内容绝不进入构建上下文（比 Dockerfile 的 COPY 白名单更早拦截）
+# 凭证与环境（.env.example 是无害模板，但镜像无需运行模板——一并排除）
+.env
+.env.*
+*.key
+secrets/
+# 运行数据（评审期数据只活在 Sealos 持久卷 /data）
+data/
+*.db
+*.db-wal
+*.db-shm
+*.corrupt-*
+# 依赖与构建产物（镜像内重新安装）
+node_modules/
+# git 与本地工具
+.git/
+.gitignore
+.gitattributes
+.git/hooks/
+.trae/
+.vscode/
+# 开发用大文件与临时物
+devlog/*.png
+*.log
+tmp/
+Dockerfile*
+docker-compose*
+.dockerignore
