@@ -8,7 +8,43 @@ import { openDb, REPORTS_MAX, SEARCH_TTL_MS } from '../lib/db.mjs';
 import { createGate } from '../lib/gate.mjs';
 import { createZhihu, createMockZhihuFetch, normalizeQuestionUrl, searchCacheKey } from '../lib/zhihu.mjs';
 import { createLlm, extractJson } from '../lib/llm.mjs';
-import { createPipeline } from '../lib/pipeline.mjs';
+import { createPipeline, humanize } from '../lib/pipeline.mjs';
+
+// ---------- humanize（层 3 兜底改写：剥 AI 腔记号，不重组语义） ----------
+test('humanize: 方括号记号剥除，内容保留', () => {
+  assert.equal(humanize('拆成[比分→局势→执行]三层'), '拆成比分→局势→执行三层');
+  // 英文字母斜杠不受规则②影响（中文相邻才转顿号）——按[A/B]保持原样
+  assert.equal(humanize('按[A/B]顺序'), '按A/B顺序');
+});
+
+test('humanize: 中文斜杠枚举转顿号，URL/数字斜杠不动', () => {
+  assert.equal(humanize('预算/青训/教练三方'), '预算、青训、教练三方');
+  assert.equal(humanize('见 https://a.com/x/y 路径'), '见 https://a.com/x/y 路径');
+  assert.equal(humanize('3/4 局'), '3/4 局');
+});
+
+test('humanize: 嵌套括号外层展开为破折号', () => {
+  assert.equal(humanize('BP 拆解（含烧牌经济学（版本改动））'), 'BP 拆解——含烧牌经济学（版本改动）');
+});
+
+test('humanize: 正常文本零改动（含单层括号）', () => {
+  assert.equal(humanize('这是一句正常的话（带一个括号）'), '这是一句正常的话（带一个括号）');
+  assert.equal(humanize('  多余  空白  '), '多余 空白');
+});
+
+test('humanize: 主审管线全流程输出已过 humanize（objection 不含方括号）', async () => {
+  const { pipeline } = buildStack();
+  const { runId } = pipeline.start('review', { question: '机器学习该怎么入门？', draft: '入门先补数学（线性代数（矩阵论）），再上 CS229，按[数学→推导→工程]顺序。' });
+  await waitFor(() => pipeline.getRun(runId)?.status === 'done');
+  const report = pipeline.getReport(runId).result;
+  for (const o of report.controversy.objections) {
+    assert.ok(!/\[/.test(o.objection), `objection 含方括号：${o.objection}`);
+    assert.ok(!/\[/.test(o.response), `response 含方括号：${o.response}`);
+  }
+  for (const t of report.increment.covered.concat(report.increment.unique, report.increment.blanks)) {
+    assert.ok(!/\[/.test(t), `increment 条目含方括号：${t}`);
+  }
+});
 
 function tempDir() { return mkdtempSync(path.join(tmpdir(), 'soundcheck-test-')); }
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -107,6 +143,40 @@ test('zhihu: 问题 URL 规范化', () => {
 test('zhihu: 缓存键区分 count 与接口（v2.4 修正回归）', () => {
   assert.notEqual(searchCacheKey('zhihu_search', { query: 'a', count: 5 }), searchCacheKey('zhihu_search', { query: 'a', count: 10 }));
   assert.notEqual(searchCacheKey('zhihu_search', { query: 'a', count: 10 }), searchCacheKey('global_search', { query: 'a', count: 10 }));
+});
+
+test('zhihu: question_answers 缓存键区分问题 URL（v2.20 修正回归——原实现所有问题共用一键）', () => {
+  // 原 bug：searchCacheKey 解构丢掉 questionUrl → A 问题的标杆回答缓存喂给 B 问题（跨问题错误命中）
+  const urlA = 'https://www.zhihu.com/question/2082497943508973001';
+  const urlB = 'https://www.zhihu.com/question/2009226356785947031';
+  const keyA = searchCacheKey('question_answers', { questionUrl: urlA, limit: 20 });
+  const keyB = searchCacheKey('question_answers', { questionUrl: urlB, limit: 20 });
+  assert.notEqual(keyA, keyB, '不同问题 URL 的缓存键必须不同');
+  assert.notEqual(keyA, searchCacheKey('question_answers', { questionUrl: urlA, limit: 10 }), '不同 limit 的缓存键必须不同');
+});
+
+test('zhihu: question_answers 缓存不跨问题命中（端到端回归：A 问题的答案不能喂给 B 问题）', async () => {
+  const db = openDb(tempDir());
+  let calls = 0;
+  const zhihu = createZhihu({
+    db, gate: createGate({}), secret: 's',
+    fetchImpl: async (url) => {
+      calls++;
+      const target = String(url);
+      if (target.includes('/question_answers')) {
+        const questionUrl = new URL(target).searchParams.get('QuestionUrl');
+        // 按问题返回不同答案——若缓存键碰撞，第二个问题会拿到第一个问题的答案
+        const answer = questionUrl.includes('111') ? 'A 问题的答案' : 'B 问题的答案';
+        return { ok: true, status: 200, json: async () => ({ Code: 0, Data: { Items: [{ ContentType: 'Answer', ContentToken: '1', Url: questionUrl, Summary: answer }], Paging: { IsEnd: true } } }) };
+      }
+      return { ok: true, status: 200, json: async () => ({ Code: 0, Data: { Items: [] } }) };
+    },
+  });
+  const a = await zhihu.questionAnswers('https://www.zhihu.com/question/111');
+  const b = await zhihu.questionAnswers('https://www.zhihu.com/question/222');
+  assert.equal(a.items[0].summary, 'A 问题的答案');
+  assert.equal(b.items[0].summary, 'B 问题的答案');
+  assert.equal(calls, 2, '两个问题各调一次接口（不应有跨问题缓存命中）');
 });
 
 test('zhihu: 搜索→缓存命中（第二次不发请求）+ single-flight 合并并发', async () => {
